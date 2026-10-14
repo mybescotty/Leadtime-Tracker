@@ -60,7 +60,7 @@ main { padding: 16px 20px 40px; max-width: 1800px; margin: 0 auto; }
 .slider-row input[type=range] { flex: 1; accent-color: var(--accent); }
 .asat-big { font-size: 20px; font-weight: 700; min-width: 190px; }
 .asat-big small { display: block; font-size: 11px; font-weight: 400; color: var(--text-secondary); }
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .kpi { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; border-top: 4px solid var(--bg-header); }
 .kpi .v { font-size: 26px; font-weight: 700; line-height: 1.1; }
 .kpi .l { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
@@ -92,6 +92,7 @@ main { padding: 16px 20px 40px; max-width: 1800px; margin: 0 auto; }
 .badge-amber { background: #f39c12; color: #fff; border-radius: 3px; padding: 1px 6px; font-size: 11px; white-space: nowrap; }
 .badge-green { background: #27ae60; color: #fff; border-radius: 3px; padding: 1px 6px; font-size: 11px; white-space: nowrap; }
 .badge-grey { background: #9a9ab5; color: #fff; border-radius: 3px; padding: 1px 6px; font-size: 11px; white-space: nowrap; }
+.badge-mot { background: #7b68c8; color: #fff; border-radius: 3px; padding: 1px 6px; font-size: 11px; white-space: nowrap; }
 .overdue { color: #c0392b; font-weight: 600; }
 .muted { color: var(--text-secondary); }
 .part-line { font-size: 12px; margin: 1px 0; }
@@ -134,7 +135,7 @@ main { padding: 16px 20px 40px; max-width: 1800px; margin: 0 auto; }
     <div class="muted">Track every bus off the road, the parts it is waiting on, and when it went back into service.</div>
     <div class="fmt">
       <b>Tab 1 – Parts</b> (one row per part): Date Requested · Date Ordered · Bus Number · Part Number · Part Description · Comments · Date Due · Date Arrived<br>
-      <b>Tab 2 – Buses</b> (one row per day): Date · Bus Numbers on Log (comma separated, e.g. <i>12345, 12344</i>)<br>
+      <b>Tab 2 – Buses</b> (one row per day): Date · Bus Numbers on Log (comma separated, e.g. <i>12345, 12343MOT, 12121</i> – add <b>MOT</b> after the number for buses in for MOT)<br>
       A bus is off road from the first day it appears on the daily log until the first logged day it is missing (back on road).<br>
       Parts are matched to a VOR spell by bus number and request date.
     </div>
@@ -195,6 +196,7 @@ main { padding: 16px 20px 40px; max-width: 1800px; margin: 0 auto; }
       <div class="legend">
         <span><i class="sw" style="background:#e74c3c"></i>Off road (VOR)</span>
         <span><i class="sw" style="background:#e74c3c;opacity:.35"></i>VOR – ended / not on selected day</span>
+        <span><i class="sw" style="background:#7b68c8"></i>MOT (own section below)</span>
         <span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#27ae60"/></svg>Back on road</span>
         <span><svg width="12" height="12"><circle cx="6" cy="6" r="3.5" fill="#fff" stroke="#2D2A6E" stroke-width="1.5"/></svg>Part requested</span>
         <span><i class="sw" style="background:#9a9ab5"></i>Requested, not ordered</span>
@@ -204,6 +206,15 @@ main { padding: 16px 20px 40px; max-width: 1800px; margin: 0 auto; }
         <span><svg width="12" height="12"><path d="M6 1 L11 6 L6 11 L1 6 Z" fill="#fff" stroke="#2D2A6E" stroke-width="1.5"/></svg>Due date</span>
         <span><i class="sw" style="background:#E5007D;width:3px"></i>Selected date</span>
       </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><div class="grow">
+        <h2 id="mot-gantt-title">MOT</h2>
+        <div class="sub">Buses entered on the daily log with “MOT” after the fleet number (e.g. 12343MOT). Kept separate – not counted in the VOR awaiting / not awaiting figures.</div>
+      </div></div>
+      <div class="chart-wrap" id="mot-gantt"></div>
+      <div class="table-scroll" id="mot-table" style="margin-top:12px"></div>
     </section>
 
     <section class="panel">
@@ -321,7 +332,7 @@ function parseWorkbook(wb) {
         const cells = []; for (let j = bc; j < r.length; j++) if (j !== dc && r[j] != null && String(r[j]).trim() !== '') cells.push(String(r[j]));
         if (!cells.length) continue; // blank row = not logged yet
         const set = logMap.get(d) || new Set();
-        cells.join(',').split(/[,;\/\n\r\t ]+/).map(normBus).filter(b => b && !/^(NONE|NIL|N\/A|NA|-|0)$/.test(b)).forEach(b => set.add(b));
+        cells.join(',').replace(/(\d)\s*[-–:]?\s*MOT\b/gi, '$1MOT').replace(/\bMOT\s*[-–:]?\s*(\d\w*)/gi, '$1MOT').split(/[,;\/\n\r\t ]+/).map(normBus).filter(b => b && !/^(NONE|NIL|N\/A|NA|-|0|MOT)$/.test(b)).forEach(b => set.add(b));
         logMap.set(d, set);
       }
     }
@@ -342,7 +353,7 @@ function build(raw, cutoff) {
     const S = new Set(buses);
     for (const [b, ep] of active) if (!S.has(b)) { ep.end = d; active.delete(b); }
     for (const b of S) {
-      if (!active.has(b)) { const ep = { id: eps.length, bus: b, start: d, end: null, last: d, fromStart: li === 0, parts: [] }; eps.push(ep); active.set(b, ep); }
+      if (!active.has(b)) { const mot = /MOT$/.test(b); const ep = { id: eps.length, bus: mot ? b.replace(/MOT$/, '') : b, type: mot ? 'MOT' : 'VOR', start: d, end: null, last: d, fromStart: li === 0, parts: [] }; eps.push(ep); active.set(b, ep); }
       active.get(b).last = d;
     }
   });
@@ -353,7 +364,7 @@ function build(raw, cutoff) {
     p.ep = null; const a = anchorOf(p); if (a == null) return;
     let best = null;
     (byBus.get(p.bus) || []).forEach(e => {
-      if (a >= e.start - LINK_PRE && (e.end == null || a < e.end) && (!best || e.start > best.start)) best = e;
+      if (a >= e.start - LINK_PRE && (e.end == null || a < e.end) && (!best || (e.type === 'VOR' && best.type !== 'VOR') || (e.type === best.type && e.start > best.start))) best = e;
     });
     if (best) { p.ep = best; best.parts.push(p); }
   });
@@ -383,10 +394,11 @@ const STATUS_COL = { 'Arrived': '#27ae60', 'Overdue': '#c0392b', 'On order': '#f
 const STATUS_BADGE = { 'Arrived': 'badge-green', 'Overdue': 'badge-red', 'On order': 'badge-amber', 'Not ordered': 'badge-grey', 'Not yet raised': 'badge-grey', 'Unknown': 'badge-grey' };
 function leadTime(p, d) { if (p.ord == null || p.ord > d) return null; return (p.arr != null && p.arr <= d ? p.arr : d) - p.ord; }
 
+const isMot = e => e.type === 'MOT', isVor = e => e.type !== 'MOT';
 function dayCounts(M, t) {
-  let off = 0, wait = 0;
-  M.eps.forEach(e => { if (epActive(e, t)) { off++; if (epAwaiting(e, t)) wait++; } });
-  return { off, wait, not: off - wait };
+  let off = 0, wait = 0, mot = 0;
+  M.eps.forEach(e => { if (epActive(e, t)) { if (isMot(e)) mot++; else { off++; if (epAwaiting(e, t)) wait++; } } });
+  return { off, wait, not: off - wait, mot };
 }
 
 /* ===== §4 Demo data ===== */
@@ -417,16 +429,17 @@ function demoData() {
       }
       end = lastArr === Infinity ? null : lastArr + ri(0, 1);
     } else end = start + ri(1, 5);
+    const mot = !needs && rnd() < 0.35;
     if (end != null && end > today) end = null;
     const s = busy.get(bus) || [];
     if (s.some(([a, b]) => start <= (b ?? Infinity) + 1 && (end ?? Infinity) >= a - 1)) continue;
-    s.push([start, end]); busy.set(bus, s); spells.push({ bus, start, end });
+    s.push([start, end]); busy.set(bus, s); spells.push({ bus, start, end, mot });
     rows.forEach(r => parts.push({ id: parts.length, ...r }));
   }
   // a few parts for buses not off road (e.g. ordered for planned work)
   for (let k = 0; k < 6; k++) { const [desc, pno] = pick(descs); const req = ri(from, today - 2); const ord = req + 1; const due = ord + 3; const arr = due <= today ? due : null; parts.push({ id: parts.length, bus: pick(fleet), pno, desc, com: 'Stock / planned work', req, ord, due, arr }); }
   const log = [];
-  for (let t = from; t <= today; t++) log.push([t, spells.filter(s => s.start <= t && (s.end == null || t < s.end)).map(s => s.bus)]);
+  for (let t = from; t <= today; t++) log.push([t, spells.filter(s => s.start <= t && (s.end == null || t < s.end)).map(s => s.bus + (s.mot ? 'MOT' : ''))]);
   return { parts, log, depot: 'Demo Depot', source: 'Demo data', warnings: [] };
 }
 
@@ -477,7 +490,7 @@ function ganttSVG(M, d, vs, ve, W, rows, opts = {}) {
   if (!rows.length) s += `<text x="${W / 2}" y="${HH + 40}" text-anchor="middle" fill="#6b6b8a" font-size="13">${esc(opts.emptyText || 'No buses off road')}</text>`;
 
   blocks.forEach(({ e, y }) => {
-    const act = epActive(e, d), future = e.start > d, wait = act && epAwaiting(e, d);
+    const act = epActive(e, d), future = e.start > d, wait = act && epAwaiting(e, d), mot = isMot(e), BAR = mot ? '#7b68c8' : '#e74c3c', KIND = mot ? 'MOT' : 'VOR';
     const days = epDaysOff(e, d);
     // label column
     s += `<text x="10" y="${y + 19}" font-weight="700" font-size="12.5" fill="#2D2A6E">${esc(e.bus)}</text>`;
@@ -485,6 +498,7 @@ function ganttSVG(M, d, vs, ve, W, rows, opts = {}) {
     if (future) { tag = 'Off ' + fmtS(e.start); tc = '#9a9ab5'; }
     else if (!act) { tag = 'Back ' + fmtS(e.end) + ' · ' + days + 'd'; tc = '#27ae60'; }
     else if (wait) { tag = 'Awaiting parts · ' + days + 'd'; tc = '#c0392b'; }
+    else if (mot) { tag = 'On MOT · ' + days + 'd'; tc = '#7b68c8'; }
     else { tag = (e.parts.length ? 'Parts in · ' : 'No parts · ') + days + 'd'; tc = '#2D2A6E'; }
     s += `<text x="${LW - 8}" y="${y + 19}" text-anchor="end" font-size="10.5" font-weight="600" fill="${tc}">${esc(tag)}</text>`;
     e.parts.forEach((p, i) => {
@@ -497,9 +511,9 @@ function ganttSVG(M, d, vs, ve, W, rows, opts = {}) {
     const endT = e.end == null ? ve + 2 : e.end;
     const x1 = X(Math.max(e.start, vs - 1)), x2 = X(Math.min(endT, ve + 2));
     const op = act ? 1 : (future ? .25 : .38);
-    const tip = `Bus ${e.bus} off road ${fmtL(e.start)}${e.fromStart ? ' (or earlier – first day of log)' : ''}\n` + (e.end != null ? `Back on road ${fmtL(e.end)} – ${e.end - e.start} day(s)` : `Still off road – ${days} day(s) as at ${fmtL(d)}`) + `\nParts linked: ${e.parts.length}` + (e.parts.length ? ` · days awaiting parts: ${epAwaitDays(e, d)}` : '');
-    s += `<g><title>${esc(tip)}</title><rect x="${x1}" y="${y + 8}" width="${Math.max(2, x2 - x1)}" height="15" rx="3" fill="#e74c3c" opacity="${op}"/>`;
-    if (x2 - Math.max(x1, LW) > 70) s += `<text x="${Math.max(x1, LW) + 6}" y="${y + 19}" font-size="10" fill="#fff" font-weight="600">VOR ${e.end != null ? (e.end - e.start) + 'd' : '– ongoing'}</text>`;
+    const tip = `Bus ${e.bus} ${mot ? 'on MOT from' : 'off road'} ${fmtL(e.start)}${e.fromStart ? ' (or earlier – first day of log)' : ''}\n` + (e.end != null ? `Back on road ${fmtL(e.end)} – ${e.end - e.start} day(s)` : `Still off road – ${days} day(s) as at ${fmtL(d)}`) + `\nParts linked: ${e.parts.length}` + (e.parts.length ? ` · days awaiting parts: ${epAwaitDays(e, d)}` : '');
+    s += `<g><title>${esc(tip)}</title><rect x="${x1}" y="${y + 8}" width="${Math.max(2, x2 - x1)}" height="15" rx="3" fill="${BAR}" opacity="${op}"/>`;
+    if (x2 - Math.max(x1, LW) > 70) s += `<text x="${Math.max(x1, LW) + 6}" y="${y + 19}" font-size="10" fill="#fff" font-weight="600">${KIND} ${e.end != null ? (e.end - e.start) + 'd' : '– ongoing'}</text>`;
     s += `</g>`;
     if (e.end != null && e.end >= vs && e.end <= ve + 1) {
       const bx = X(e.end);
@@ -546,7 +560,7 @@ function trendSVG(M, d, vs, ve, W) {
   const lastT = M.lastLog == null ? null : Math.max(M.lastLog, Math.min(d, todayDn()));
   const data = [];
   if (M.firstLog != null) for (let t = Math.max(vs, M.firstLog); t <= Math.min(ve, lastT); t++) data.push({ t, ...dayCounts(M, t) });
-  const max = Math.max(4, ...data.map(x => x.off));
+  const max = Math.max(4, ...data.map(x => x.off + x.mot));
   const step = max <= 8 ? 1 : max <= 20 ? 2 : max <= 50 ? 5 : 10;
   const top = Math.ceil(max / step) * step, Y = v => HH + CH - v / top * CH;
   let s = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Segoe UI, Arial, sans-serif" font-size="11">`;
@@ -556,16 +570,18 @@ function trendSVG(M, d, vs, ve, W) {
   s += `<text x="10" y="${HH + 14}" font-weight="700" fill="#2D2A6E" font-size="12">Buses off road</text>`;
   s += `<rect x="10" y="${HH + 30}" width="14" height="10" fill="#e74c3c" rx="2"/><text x="30" y="${HH + 39}" fill="#2D2A6E">Awaiting parts</text>`;
   s += `<rect x="10" y="${HH + 50}" width="14" height="10" fill="#2D2A6E" rx="2"/><text x="30" y="${HH + 59}" fill="#2D2A6E">Not awaiting parts</text>`;
+  s += `<rect x="10" y="${HH + 70}" width="14" height="10" fill="#b3a9e6" rx="2"/><text x="30" y="${HH + 79}" fill="#2D2A6E">On MOT (separate)</text>`;
   const cur = data.find(x => x.t === d);
-  if (cur) s += `<text x="10" y="${HH + 90}" fill="#6b6b8a" font-size="10.5">On ${fmtS(d)}: ${cur.off} off road</text><text x="10" y="${HH + 105}" fill="#c0392b" font-size="10.5">${cur.wait} awaiting · <tspan fill="#2D2A6E">${cur.not} not</tspan></text>`;
+  if (cur) s += `<text x="10" y="${HH + 104}" fill="#6b6b8a" font-size="10.5">On ${fmtS(d)}: ${cur.off} VOR${cur.mot ? ' + ' + cur.mot + ' MOT' : ''}</text><text x="10" y="${HH + 119}" fill="#c0392b" font-size="10.5">${cur.wait} awaiting · <tspan fill="#2D2A6E">${cur.not} not</tspan></text>`;
   const bw = Math.max(1, dw * (dw > 6 ? .72 : .9));
   data.forEach(x => {
     const bx = X(x.t) + (dw - bw) / 2;
-    const tip = `${fmtW(x.t)}\n${x.off} off road\n${x.wait} awaiting parts\n${x.not} not awaiting parts`;
+    const tip = `${fmtW(x.t)}\n${x.off} off road (VOR)\n${x.wait} awaiting parts\n${x.not} not awaiting parts\n${x.mot} on MOT`;
     s += `<g data-day="${x.t}"><title>${esc(tip)}</title><rect x="${X(x.t)}" y="${HH}" width="${dw}" height="${CH}" fill="transparent"/>`;
     if (x.wait) s += `<rect x="${bx}" y="${Y(x.wait)}" width="${bw}" height="${Y(0) - Y(x.wait)}" fill="#e74c3c"/>`;
     if (x.not) s += `<rect x="${bx}" y="${Y(x.off)}" width="${bw}" height="${Y(x.wait) - Y(x.off)}" fill="#2D2A6E"/>`;
-    if (dw >= 18 && x.off) s += `<text x="${X(x.t) + dw / 2}" y="${Y(x.off) - 3}" text-anchor="middle" font-size="9.5" fill="#6b6b8a">${x.off}</text>`;
+    if (x.mot) s += `<rect x="${bx}" y="${Y(x.off + x.mot)}" width="${bw}" height="${Y(x.off) - Y(x.off + x.mot)}" fill="#b3a9e6"/>`;
+    if (dw >= 18 && x.off + x.mot) s += `<text x="${X(x.t) + dw / 2}" y="${Y(x.off + x.mot) - 3}" text-anchor="middle" font-size="9.5" fill="#6b6b8a">${x.off}${x.mot ? '+' + x.mot : ''}</text>`;
     s += `</g>`;
   });
   if (d >= vs && d <= ve) s += `<rect x="${X(d)}" y="${HH}" width="${dw}" height="${CH}" fill="none" stroke="#E5007D" stroke-width="2"/><text x="${X(d) + dw / 2}" y="${HH - 7}" text-anchor="middle" fill="#E5007D" font-size="10" font-weight="700">${fmtS(d)}</text>`;
@@ -595,9 +611,9 @@ function windowOf(M) {
   const r = +S.range, ahead = Math.max(5, Math.round(r * 0.18));
   return { vs: S.asAt - (r - ahead) + 1, ve: S.asAt + ahead };
 }
-function ganttRows(M, vs, ve) {
-  const d = S.asAt;
-  let rows = S.mode === 'ondate' ? M.eps.filter(e => epActive(e, d)) : M.eps.filter(e => e.start <= ve && (e.end == null || e.end >= vs));
+function ganttRows(M, vs, ve, type = 'VOR') {
+  const d = S.asAt, eps = M.eps.filter(e => e.type === type);
+  let rows = S.mode === 'ondate' ? eps.filter(e => epActive(e, d)) : eps.filter(e => e.start <= ve && (e.end == null || e.end >= vs));
   return rows.sort((a, b) => a.start - b.start || a.bus.localeCompare(b.bus, undefined, { numeric: true }));
 }
 
@@ -637,27 +653,31 @@ function render() {
   const W = Math.max(760, $('#gantt').clientWidth || 1100);
   $('#gantt-title').textContent = S.mode === 'ondate' ? `Off road on ${fmtW(d)} – ${plural(rows.length, 'bus')}`.replace('buss', 'buses') : `All VOR spells ${fmtS(vs)} – ${fmtS(ve)} (${rows.length})`;
   $('#gantt').innerHTML = ganttSVG(M, d, vs, ve, W, rows, { emptyText: S.mode === 'ondate' ? 'No buses off road on this date' : 'No VOR spells in this window' }).svg;
+  const mrows = ganttRows(M, vs, ve, 'MOT');
+  $('#mot-gantt-title').textContent = S.mode === 'ondate' ? `On MOT on ${fmtW(d)} – ${mrows.length}` : `All MOT spells ${fmtS(vs)} – ${fmtS(ve)} (${mrows.length})`;
+  $('#mot-gantt').innerHTML = ganttSVG(M, d, vs, ve, W, mrows, { emptyText: S.mode === 'ondate' ? 'No buses on MOT on this date' : 'No MOT spells in this window' }).svg;
   $('#trend').innerHTML = trendSVG(M, d, vs, ve, W).svg;
-  renderOffroad(M, d); renderParts(M, d); renderHistory(M, d);
+  renderMot(M, d); renderOffroad(M, d); renderParts(M, d); renderHistory(M, d);
 }
 
 function kpiData(M, d) {
-  const act = M.eps.filter(e => epActive(e, d)), wait = act.filter(e => epAwaiting(e, d));
+  const act = M.eps.filter(e => isVor(e) && epActive(e, d)), wait = act.filter(e => epAwaiting(e, d)), motN = M.eps.filter(e => isMot(e) && epActive(e, d)).length;
   const out = M.parts.filter(p => partOut(p, d)), overdue = out.filter(p => partStatus(p, d) === 'Overdue');
   const days = act.map(e => epDaysOff(e, d));
   const arrived = M.parts.filter(p => p.ord != null && p.arr != null && p.arr <= d);
   const avgLead = arrived.length ? arrived.reduce((s, p) => s + (p.arr - p.ord), 0) / arrived.length : null;
-  return { off: act.length, wait: wait.length, not: act.length - wait.length, out: out.length, overdue: overdue.length,
+  return { mot: motN, off: act.length, wait: wait.length, not: act.length - wait.length, out: out.length, overdue: overdue.length,
     avg: days.length ? days.reduce((a, b) => a + b, 0) / days.length : 0, longest: days.length ? Math.max(...days) : 0,
     longestBus: act.length ? act[days.indexOf(Math.max(...days))].bus : '', avgLead, pct: act.length ? Math.round(wait.length / act.length * 100) : 0 };
 }
 function renderKpis(M, d) {
   const k = kpiData(M, d);
   $('#kpis').innerHTML = `
-    <div class="kpi navy"><div class="v">${k.off}</div><div class="l">Buses off road</div>
+    <div class="kpi navy"><div class="v">${k.off}</div><div class="l">Buses off road (VOR)</div>
       <div class="split-bar" title="${k.wait} awaiting / ${k.not} not awaiting"><div style="width:${k.off ? k.wait / k.off * 100 : 0}%;background:#e74c3c"></div><div style="width:${k.off ? k.not / k.off * 100 : 0}%;background:#2D2A6E"></div></div></div>
     <div class="kpi red"><div class="v">${k.wait}</div><div class="l">Off road – awaiting parts (${k.pct}%)</div></div>
     <div class="kpi navy"><div class="v">${k.not}</div><div class="l">Off road – not awaiting parts</div></div>
+    <div class="kpi" style="border-top-color:#7b68c8"><div class="v" style="color:#7b68c8">${k.mot}</div><div class="l">On MOT (not counted as VOR)</div></div>
     <div class="kpi amber"><div class="v">${k.out}</div><div class="l">Parts outstanding</div></div>
     <div class="kpi red"><div class="v">${k.overdue}</div><div class="l">Parts past due date</div></div>
     <div class="kpi pink"><div class="v">${k.avg.toFixed(1)}</div><div class="l">Avg days off road (current)</div></div>
@@ -671,7 +691,7 @@ function partCell(p, d) {
   return `<div class="part-line"><span class="${STATUS_BADGE[st]}">${st}</span> ${esc(p.desc || 'Part')}${p.pno ? ' <span class="muted">(' + esc(p.pno) + ')</span>' : ''}${p.due != null ? ' · due <span class="' + (st === 'Overdue' ? 'overdue' : '') + '">' + fmtS(p.due) + '</span>' : ''}</div>`;
 }
 function offroadRows(M, d) {
-  return M.eps.filter(e => epActive(e, d)).map(e => ({ e, days: epDaysOff(e, d), wait: epAwaiting(e, d), wd: epAwaitDays(e, d) }))
+  return M.eps.filter(e => isVor(e) && epActive(e, d)).map(e => ({ e, days: epDaysOff(e, d), wait: epAwaiting(e, d), wd: epAwaitDays(e, d) }))
     .sort((a, b) => (b.wait - a.wait) || (b.days - a.days));
 }
 function renderOffroad(M, d) {
@@ -715,16 +735,23 @@ function renderParts(M, d) {
         <td><span class="${STATUS_BADGE[st]}">${st}</span></td><td>${p.ep ? 'Off ' + fmtS(p.ep.start) + (p.ep.end != null ? ' → ' + fmtS(p.ep.end) : ' → ongoing') : '<span class="muted">Not on log</span>'}</td><td>${esc(p.com)}</td></tr>`;
     }).join('') + '</tbody></table>';
 }
+function motRows(M, d) { return M.eps.filter(e => isMot(e) && epActive(e, d)).sort((a, b) => a.start - b.start); }
+function renderMot(M, d) {
+  const rows = motRows(M, d);
+  if (!rows.length) { $('#mot-table').innerHTML = '<div class="empty muted" style="padding:24px">No buses marked MOT on the log for this date.</div>'; return; }
+  $('#mot-table').innerHTML = `<table class="wo-table"><thead><tr><th>Bus</th><th>On MOT since</th><th>Days</th><th>Parts</th><th>Latest comment</th></tr></thead><tbody>` +
+    rows.map(e => { const parts = e.parts.filter(p => anchorOf(p) <= d); return `<tr><td><b>${esc(e.bus)}</b> <span class="badge-mot">MOT</span></td><td>${fmtL(e.start)}</td><td class="num">${epDaysOff(e, d)}</td><td>${parts.length ? parts.map(p => partCell(p, d)).join('') : '<span class="muted">No parts logged</span>'}</td><td>${esc([...parts].reverse().find(p => p.com)?.com || '')}</td></tr>`; }).join('') + '</tbody></table>';
+}
 function historyRows(M, d) { return M.eps.filter(e => e.start <= d).sort((a, b) => b.start - a.start); }
 function renderHistory(M, d) {
   const rows = historyRows(M, d);
   if (!rows.length) { $('#history-table').innerHTML = '<div class="empty muted" style="padding:24px">No VOR spells yet.</div>'; return; }
-  $('#history-table').innerHTML = `<table class="wo-table"><thead><tr><th>Bus</th><th>Off road</th><th>Back on road</th><th>Days off</th><th>Parts</th><th>Days awaiting parts</th><th>Days not awaiting</th><th>Status at ${fmtS(d)}</th></tr></thead><tbody>` +
+  $('#history-table').innerHTML = `<table class="wo-table"><thead><tr><th>Bus</th><th>Type</th><th>Off road</th><th>Back on road</th><th>Days off</th><th>Parts</th><th>Days awaiting parts</th><th>Days not awaiting</th><th>Status at ${fmtS(d)}</th></tr></thead><tbody>` +
     rows.map(e => {
       const act = epActive(e, d), days = epDaysOff(e, d), wd = epAwaitDays(e, d);
-      return `<tr class="click ${act ? (epAwaiting(e, d) ? 'r-red' : 'r-amber') : ''}" data-goto="${e.start}" title="Go to ${fmtL(e.start)}"><td><b>${esc(e.bus)}</b></td><td>${fmtL(e.start)}</td><td>${e.end != null && e.end <= d ? fmtL(e.end) : '<span class="muted">–</span>'}</td>
+      return `<tr class="click ${act && isMot(e) ? '' : act ? (epAwaiting(e, d) ? 'r-red' : 'r-amber') : ''}" data-goto="${e.start}" title="Go to ${fmtL(e.start)}"><td><b>${esc(e.bus)}</b></td><td>${isMot(e) ? '<span class="badge-mot">MOT</span>' : '<span class="badge-red">VOR</span>'}</td><td>${fmtL(e.start)}</td><td>${e.end != null && e.end <= d ? fmtL(e.end) : '<span class="muted">–</span>'}</td>
         <td class="num">${days}</td><td>${e.parts.filter(p => anchorOf(p) <= d).map(p => esc(p.desc || p.pno || 'Part')).join(', ') || '<span class="muted">None</span>'}</td><td class="num">${wd}</td><td class="num">${days - wd}</td>
-        <td>${act ? (epAwaiting(e, d) ? '<span class="badge-red">Off – awaiting parts</span>' : '<span class="badge-navy">Off – not awaiting</span>') : '<span class="badge-green">Back on road</span>'}</td></tr>`;
+        <td>${act && isMot(e) ? '<span class="badge-mot">On MOT</span>' : act ? (epAwaiting(e, d) ? '<span class="badge-red">Off – awaiting parts</span>' : '<span class="badge-navy">Off – not awaiting</span>') : '<span class="badge-green">Back on road</span>'}</td></tr>`;
     }).join('') + '</tbody></table>';
 }
 
@@ -759,7 +786,8 @@ async function exportPDF() {
     // Page 1 – KPIs + trend + off road table
     band(subTxt);
     const kp = [[k.off, 'Buses off road', [45, 42, 110]], [k.wait, `Awaiting parts (${k.pct}%)`, [231, 76, 60]], [k.not, 'Not awaiting parts', [45, 42, 110]], [k.out, 'Parts outstanding', [243, 156, 18]], [k.overdue, 'Parts past due', [231, 76, 60]], [k.avg.toFixed(1), 'Avg days off road', [229, 0, 125]], [k.longest, 'Longest off (days)', [229, 0, 125]], [k.avgLead == null ? '-' : k.avgLead.toFixed(1), 'Avg lead time (d)', [39, 174, 96]]];
-    const kw = (CW - 7 * 3) / 8;
+    kp.splice(3, 0, [k.mot, 'On MOT (separate)', [123, 104, 200]]);
+    const kw = (CW - 8 * 3) / 9;
     kp.forEach(([v, l, c], i) => {
       const x = MG + i * (kw + 3), y = TOP;
       doc.setDrawColor(224, 224, 236); doc.setFillColor(255, 255, 255); doc.rect(x, y, kw, 18, 'FD');
@@ -785,8 +813,14 @@ async function exportPDF() {
       off.map(({ e, days, wait, wd }) => { const ps = e.parts.filter(p => anchorOf(p) <= d); return [e.bus, fmtL(e.start), days, wait ? 'Awaiting parts' : 'Not awaiting parts', ps.length ? wd : '-', ps.map(p => `${partStatus(p, d)}: ${p.desc || 'Part'}${p.pno ? ' (' + p.pno + ')' : ''}${p.due != null ? ' - due ' + fmtL(p.due) : ''}`).join('\n') || 'No parts logged', [...ps].reverse().find(p => p.com)?.com || '']; }),
       { 5: { cellWidth: 90 } }, i => off[i].wait ? statusFill['Awaiting parts'] : null);
     if (!off.length) { doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.text('No buses on the log for this date.', MG, doc.lastAutoTable.finalY + 6); }
+    const mr = motRows(M, d);
+    let my = doc.lastAutoTable.finalY + (off.length ? 10 : 14); if (my > BOTTOM - 25) { doc.addPage(); band(subTxt); my = TOP + 2; }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(45, 42, 110); doc.text(`On MOT on ${fmtW(d)} (${mr.length}) - not counted as VOR`, MG, my);
+    tbl(my + 2, ['Bus', 'On MOT since', 'Days', 'Parts (status / due)', 'Latest comment'],
+      mr.length ? mr.map(e => { const ps = e.parts.filter(p => anchorOf(p) <= d); return [e.bus, fmtL(e.start), epDaysOff(e, d), ps.map(p => `${partStatus(p, d)}: ${p.desc || 'Part'}${p.pno ? ' (' + p.pno + ')' : ''}`).join('\n') || 'No parts logged', [...ps].reverse().find(p => p.com)?.com || '']; }) : [['-', '-', '-', 'No buses on MOT', '']],
+      { 3: { cellWidth: 100 } }, () => [236, 233, 250]);
     // Gantt pages
-    const rows = ganttRows(M, vs, ve), maxPx = (BOTTOM - TOP - 8) / mmPerPx;
+    const rows = ganttRows(M, vs, ve, 'VOR'), maxPx = (BOTTOM - TOP - 8) / mmPerPx;
     const chunks = []; let cur = [], h = 40;
     rows.forEach(e => { const eh = 30 + e.parts.length * 19 + (e.parts.length ? 6 : 0); if (cur.length && h + eh > maxPx) { chunks.push(cur); cur = []; h = 40; } cur.push(e); h += eh; });
     chunks.push(cur);
@@ -798,8 +832,21 @@ async function exportPDF() {
       doc.addImage(await svgToPng(g.svg, PX, g.h), 'JPEG', MG, TOP + 5, CW, g.h * mmPerPx);
       if (i === chunks.length - 1) {
         doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(107, 107, 138);
-        doc.text('Red bar = off road · green dot = back on road · hollow dot = part requested · grey = not ordered · amber = on order · dark red = overdue · green bar = ordered to arrived · diamond = due date · pink line = report date', MG, BOTTOM - 1);
+        doc.text('Red bar = off road (VOR) · purple bar = MOT · green dot = back on road · hollow dot = part requested · grey = not ordered · amber = on order · dark red = overdue · green bar = ordered to arrived · diamond = due date · pink line = report date', MG, BOTTOM - 1);
         doc.setTextColor(45, 42, 110);
+      }
+    }
+    // MOT timeline
+    const mrows = ganttRows(M, vs, ve, 'MOT');
+    if (mrows.length || S.mode === 'window') {
+      const mch = []; let mc = [], mh = 40;
+      mrows.forEach(e => { const eh = 30 + e.parts.length * 19 + (e.parts.length ? 6 : 0); if (mc.length && mh + eh > maxPx) { mch.push(mc); mc = []; mh = 40; } mc.push(e); mh += eh; });
+      mch.push(mc);
+      for (let i = 0; i < mch.length; i++) {
+        doc.addPage(); band(subTxt); doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+        doc.text((S.mode === 'ondate' ? `MOT - buses on MOT on ${fmtW(d)}` : `MOT - all MOT spells ${fmtS(vs)} - ${fmtS(ve)}`) + (mch.length > 1 ? ` (${i + 1}/${mch.length})` : ''), MG, TOP + 2);
+        const g = ganttSVG(M, d, vs, ve, PX, mch[i], { emptyText: 'No MOT spells in this window' });
+        doc.addImage(await svgToPng(g.svg, PX, g.h), 'JPEG', MG, TOP + 5, CW, g.h * mmPerPx);
       }
     }
     // Parts + history
@@ -812,9 +859,9 @@ async function exportPDF() {
     const hr = historyRows(M, d).filter(e => e.end == null || e.end >= vs);
     let hy = doc.lastAutoTable.finalY + 10; if (hy > BOTTOM - 30) { doc.addPage(); band(subTxt); hy = TOP + 2; }
     doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text(`VOR history - spells active since ${fmtS(vs)} (${hr.length})`, MG, hy);
-    tbl(hy + 3, ['Bus', 'Off road', 'Back on road', 'Days off', 'Days awaiting parts', 'Days not awaiting', 'Parts', 'Status'],
-      hr.map(e => { const days = epDaysOff(e, d), wd = epAwaitDays(e, d), act = epActive(e, d); return [e.bus, fmtL(e.start), e.end != null && e.end <= d ? fmtL(e.end) : '-', days, wd, days - wd, e.parts.filter(p => anchorOf(p) <= d).map(p => p.desc || p.pno || 'Part').join(', ') || 'None', act ? (epAwaiting(e, d) ? 'Off - awaiting parts' : 'Off - not awaiting') : 'Back on road']; }),
-      { 6: { cellWidth: 80 } }, i => { const e = hr[i]; return epActive(e, d) ? (epAwaiting(e, d) ? statusFill['Awaiting parts'] : statusFill['On order']) : null; });
+    tbl(hy + 3, ['Bus', 'Type', 'Off road', 'Back on road', 'Days off', 'Days awaiting parts', 'Days not awaiting', 'Parts', 'Status'],
+      hr.map(e => { const days = epDaysOff(e, d), wd = epAwaitDays(e, d), act = epActive(e, d); return [e.bus, e.type, fmtL(e.start), e.end != null && e.end <= d ? fmtL(e.end) : '-', days, wd, days - wd, e.parts.filter(p => anchorOf(p) <= d).map(p => p.desc || p.pno || 'Part').join(', ') || 'None', act && isMot(e) ? 'On MOT' : act ? (epAwaiting(e, d) ? 'Off - awaiting parts' : 'Off - not awaiting') : 'Back on road']; }),
+      { 7: { cellWidth: 75 } }, i => { const e = hr[i]; return isMot(e) ? (epActive(e, d) ? [236, 233, 250] : null) : epActive(e, d) ? (epAwaiting(e, d) ? statusFill['Awaiting parts'] : statusFill['On order']) : null; });
     // footers
     const n = doc.getNumberOfPages(), gen = new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
     for (let i = 1; i <= n; i++) {
@@ -876,7 +923,7 @@ $('#asknown').onchange = e => { S.asKnown = e.target.checked; render(); };
 $('#mode-seg').onclick = e => { const b = e.target.closest('[data-mode]'); if (b) { S.mode = b.dataset.mode; render(); } };
 $('#parts-tabs').onclick = e => { const b = e.target.closest('[data-ptab]'); if (b) { S.partTab = b.dataset.ptab; renderParts(model(), S.asAt); } };
 $('#parts-search').oninput = e => { S.search = e.target.value; renderParts(model(), S.asAt); };
-['#gantt', '#trend'].forEach(id => $(id).addEventListener('click', e => { const t = e.target.closest('[data-day]'); if (t) setAsAt(+t.getAttribute('data-day')); }));
+['#gantt', '#mot-gantt', '#trend'].forEach(id => $(id).addEventListener('click', e => { const t = e.target.closest('[data-day]'); if (t) setAsAt(+t.getAttribute('data-day')); }));
 $('#history-table').onclick = e => { const r = e.target.closest('[data-goto]'); if (r) { setAsAt(+r.dataset.goto); window.scrollTo({ top: 0, behavior: 'smooth' }); } };
 document.addEventListener('keydown', e => {
   if (!RAW || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
