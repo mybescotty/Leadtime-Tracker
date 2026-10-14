@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VOR Parts Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+:root {
+  --bg-page:       #f5f5f7;
+  --bg-header:     #2D2A6E;
+  --bg-panel:      #ffffff;
+  --accent:        #E5007D;
+  --accent-hover:  #C0006A;
+  --row-red:       rgba(231,76,60,0.12);
+  --row-amber:     rgba(243,156,18,0.15);
+  --row-green:     rgba(39,174,96,0.15);
+  --text-primary:  #2D2A6E;
+  --text-secondary:#6b6b8a;
+  --text-on-dark:  #ffffff;
+  --border:        #e0e0ec;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg-page); color: var(--text-primary); font-family: "Segoe UI", Arial, sans-serif; font-size: 13px; }
+header { background: var(--bg-header); color: var(--text-on-dark); padding: 0 20px; min-height: 56px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+.tagline { font-size: 10px; opacity: 0.55; letter-spacing: 0.05em; margin-top: 2px; }
+.hdr-right { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 0; }
+.hdr-meta { font-size: 11px; opacity: 0.8; }
+.upload-btn { background: var(--accent); color: #fff; border: none; border-radius: 5px; padding: 7px 14px; font-size: 13px; cursor: pointer; }
+.upload-btn:hover { background: var(--accent-hover); }
+.toggle-btn { background: none; border: 1px solid var(--accent); color: var(--accent); border-radius: 5px; padding: 4px 12px; font-size: 12px; cursor: pointer; }
+.toggle-btn:hover { background: rgba(229,0,125,0.08); }
+.toggle-btn.active { background: var(--accent); color: #fff; }
+header .toggle-btn { border-color: rgba(255,255,255,0.6); color: #fff; }
+header .toggle-btn:hover { background: rgba(255,255,255,0.12); }
+.action-btn { background: #27ae60; color: #fff; border: none; border-radius: 5px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
+.action-btn:hover { background: #219a52; }
+.action-btn:disabled, .upload-btn:disabled { opacity: 0.5; cursor: default; }
+main { padding: 16px 20px 40px; max-width: 1800px; margin: 0 auto; }
+.panel { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; }
+.panel h2 { font-size: 15px; margin: 0 0 4px; }
+.panel .sub { color: var(--text-secondary); font-size: 12px; margin-bottom: 10px; }
+.panel-head { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.panel-head .grow { flex: 1; min-width: 200px; }
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.toolbar label { font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
+.toolbar input[type=date], .toolbar select, .toolbar input[type=search] { border: 1px solid var(--border); border-radius: 5px; padding: 5px 8px; font-size: 12px; color: var(--text-primary); background: #fff; font-family: inherit; }
+.nav-group { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.nav-group button { background: #fff; border: none; border-right: 1px solid var(--border); padding: 5px 10px; cursor: pointer; color: var(--text-primary); font-size: 12px; }
+.nav-group button:last-child { border-right: none; }
+.nav-group button:hover { background: rgba(229,0,125,0.08); }
+.seg { display: inline-flex; gap: 0; }
+.seg .toggle-btn { border-radius: 0; margin-left: -1px; }
+.seg .toggle-btn:first-child { border-radius: 5px 0 0 5px; margin-left: 0; }
+.seg .toggle-btn:last-child { border-radius: 0 5px 5px 0; }
+.slider-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.slider-row input[type=range] { flex: 1; accent-color: var(--accent); }
+.asat-big { font-size: 20px; font-weight: 700; min-width: 190px; }
+.asat-big small { display: block; font-size: 11px; font-weight: 400; color: var(--text-secondary); }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.kpi { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; border-top: 4px solid var(--bg-header); }
+.kpi .v { font-size: 26px; font-weight: 700; line-height: 1.1; }
+.kpi .l { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+.kpi.red { border-top-color: #e74c3c; } .kpi.red .v { color: #c0392b; }
+.kpi.navy { border-top-color: #2D2A6E; }
+.kpi.pink { border-top-color: var(--accent); }
+.kpi.amber { border-top-color: #f39c12; }
+.kpi.green { border-top-color: #27ae60; }
+.split-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: #eee; margin-top: 8px; }
+.split-bar div { height: 100%; }
+.chart-wrap { width: 100%; overflow-x: auto; }
+.chart-wrap svg { display: block; }
+.chart-wrap [data-day] { cursor: pointer; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 11px; color: var(--text-secondary); margin: 8px 0 0; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { display: inline-block; width: 18px; height: 9px; border-radius: 2px; }
+.wo-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.wo-table th { background: var(--bg-header); color: var(--text-on-dark); padding: 8px 10px; text-align: left; font-size: 12px; position: sticky; top: 0; white-space: nowrap; }
+.wo-table td { padding: 7px 10px; border-bottom: 1px solid #eaecef; vertical-align: top; }
+.wo-table tbody tr:hover td { filter: brightness(0.96); }
+.wo-table tr.r-red td { background: var(--row-red); }
+.wo-table tr.r-amber td { background: var(--row-amber); }
+.wo-table tr.r-green td { background: var(--row-green); }
+.wo-table tr.click { cursor: pointer; }
+.wo-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.table-scroll { max-height: 520px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; }
+.badge-navy { background: #2D2A6E; color: #fff; border-radius: 3px; padding: 1px 6px; font-size: 11px; white-space: nowrap; }
+.badge-red { background: #e74c3c; color: #fff; border-radius: 3px; padding: 1px 6px; font-size: 11px; white-space: nowrap; }
+.badge-amber { background: #f39c12; color: #fff; border-radius: 3px; padding: 1px 6px; font-size: 11px; white-space: nowrap; }
+.badge-green { background: #27ae60; color: #fff; border-radius: 3px; padding: 1px 6px; font-size: 11px; white-space: nowrap; }
+.badge-grey { background: #9a9ab5; color: #fff; border-radius: 3px; padding: 1px 6px; font-size: 11px; white-space: nowrap; }
+.overdue { color: #c0392b; font-weight: 600; }
+.muted { color: var(--text-secondary); }
+.part-line { font-size: 12px; margin: 1px 0; }
+.empty { text-align: center; padding: 50px 20px; }
+.empty h2 { font-size: 20px; }
+.empty .fmt { display: inline-block; text-align: left; background: #fafafe; border: 1px dashed var(--border); border-radius: 8px; padding: 12px 18px; margin: 14px 0; font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
+.empty .fmt b { color: var(--text-primary); }
+.banner { background: rgba(229,0,125,0.08); border: 1px solid rgba(229,0,125,0.3); color: var(--text-primary); border-radius: 6px; padding: 8px 12px; margin-bottom: 14px; font-size: 12px; }
+.warn { background: var(--row-amber); border: 1px solid #f39c12; border-radius: 6px; padding: 8px 12px; margin-bottom: 14px; font-size: 12px; }
+.hidden { display: none !important; }
+.tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.count-pill { background: rgba(45,42,110,0.1); border-radius: 10px; padding: 0 7px; font-size: 11px; margin-left: 4px; }
+.toggle-btn.active .count-pill { background: rgba(255,255,255,0.25); }
+#busy { position: fixed; inset: 0; background: rgba(45,42,110,0.35); display: flex; align-items: center; justify-content: center; z-index: 50; color: #fff; font-size: 16px; }
+@media (max-width: 700px) { main { padding: 12px; } .asat-big { min-width: 0; } }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>🚌 <span id="title-depot"></span>VOR Parts Tracker</h1>
+    <div class="tagline">Designed by First Bus Franchise · Engineering</div>
+  </div>
+  <div class="hdr-right">
+    <span class="hdr-meta" id="hdr-meta"></span>
+    <input type="file" id="file-input" accept=".xlsx,.xlsm,.xls,.csv" class="hidden">
+    <button class="upload-btn" id="btn-upload">⬆ Upload Excel</button>
+    <button class="toggle-btn" id="btn-template" title="Download a blank workbook in the expected layout">Blank template</button>
+    <button class="action-btn" id="btn-pdf" disabled>📄 Export PDF</button>
+    <button class="action-btn" id="btn-html" disabled style="background:#2D2A6E">🌐 Export HTML</button>
+  </div>
+</header>
+
+<main>
+  <div id="banner" class="banner hidden"></div>
+  <div id="warnings" class="warn hidden"></div>
+
+  <section id="empty" class="panel empty">
+    <h2>Upload the VOR parts log to get started</h2>
+    <div class="muted">Track every bus off the road, the parts it is waiting on, and when it went back into service.</div>
+    <div class="fmt">
+      <b>Tab 1 – Parts</b> (one row per part): Date Requested · Date Ordered · Bus Number · Part Number · Part Description · Comments · Date Due · Date Arrived<br>
+      <b>Tab 2 – Buses</b> (one row per day): Date · Bus Numbers on Log (comma separated, e.g. <i>12345, 12344</i>)<br>
+      A bus is off road from the first day it appears on the daily log until the first logged day it is missing (back on road).<br>
+      Parts are matched to a VOR spell by bus number and request date.
+    </div>
+    <div class="toolbar" style="justify-content:center">
+      <button class="upload-btn" id="btn-upload2">⬆ Upload Excel</button>
+      <button class="toggle-btn" id="btn-demo">Try with demo data</button>
+    </div>
+  </section>
+
+  <div id="dash" class="hidden">
+    <section class="panel">
+      <div class="panel-head">
+        <div class="asat-big"><small>Showing position as at</small><span id="asat-label"></span></div>
+        <div class="toolbar grow">
+          <div class="nav-group" title="Move back / forward in time (← → keys)">
+            <button data-step="first" title="First logged day">⏮</button>
+            <button data-step="-7" title="Back a week">« 7d</button>
+            <button data-step="-1" title="Back a day">‹ 1d</button>
+            <button data-step="1" title="Forward a day">1d ›</button>
+            <button data-step="7" title="Forward a week">7d »</button>
+            <button data-step="last" title="Latest logged day">⏭ Latest</button>
+          </div>
+          <label>Date <input type="date" id="asat-input"></label>
+          <label>Window
+            <select id="range-sel">
+              <option value="14">2 weeks</option>
+              <option value="28" selected>4 weeks</option>
+              <option value="56">8 weeks</option>
+              <option value="91">13 weeks</option>
+              <option value="182">6 months</option>
+              <option value="all">All data</option>
+            </select>
+          </label>
+          <div class="seg" id="mode-seg">
+            <button class="toggle-btn active" data-mode="ondate" title="Only buses that were off road on the selected date">Off road on date</button>
+            <button class="toggle-btn" data-mode="window" title="Every VOR spell that touches the visible window">All in window</button>
+          </div>
+          <label title="Hide anything that happened after the selected date – see the board exactly as it looked that day"><input type="checkbox" id="asknown"> As known on that day</label>
+        </div>
+      </div>
+      <div class="slider-row">
+        <span class="muted" id="slider-min"></span>
+        <input type="range" id="asat-slider" step="1">
+        <span class="muted" id="slider-max"></span>
+      </div>
+    </section>
+
+    <div class="kpis" id="kpis"></div>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div class="grow">
+          <h2 id="gantt-title">Timeline</h2>
+          <div class="sub">Each row is a VOR spell. Click a date in the header to jump to that day. Hover bars for detail.</div>
+        </div>
+      </div>
+      <div class="chart-wrap" id="gantt"></div>
+      <div class="legend">
+        <span><i class="sw" style="background:#e74c3c"></i>Off road (VOR)</span>
+        <span><i class="sw" style="background:#e74c3c;opacity:.35"></i>VOR – ended / not on selected day</span>
+        <span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#27ae60"/></svg>Back on road</span>
+        <span><svg width="12" height="12"><circle cx="6" cy="6" r="3.5" fill="#fff" stroke="#2D2A6E" stroke-width="1.5"/></svg>Part requested</span>
+        <span><i class="sw" style="background:#9a9ab5"></i>Requested, not ordered</span>
+        <span><i class="sw" style="background:#f39c12"></i>On order</span>
+        <span><i class="sw" style="background:#c0392b"></i>Overdue</span>
+        <span><i class="sw" style="background:#27ae60"></i>Ordered → arrived</span>
+        <span><svg width="12" height="12"><path d="M6 1 L11 6 L6 11 L1 6 Z" fill="#fff" stroke="#2D2A6E" stroke-width="1.5"/></svg>Due date</span>
+        <span><i class="sw" style="background:#E5007D;width:3px"></i>Selected date</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Off road per day – awaiting parts vs not awaiting parts</h2>
+      <div class="sub">A bus is “awaiting parts” on a day if it is off road and has at least one linked part requested but not yet arrived. Click a bar to jump to that day.</div>
+      <div class="chart-wrap" id="trend"></div>
+    </section>
+
+    <section class="panel">
+      <h2 id="offroad-title">Off road</h2>
+      <div class="sub">Every bus on the log for the selected date.</div>
+      <div class="table-scroll" id="offroad-table"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div class="grow"><h2>Parts log</h2><div class="sub">Status is worked out as at the selected date. Lead time = days from ordered to arrived (or still waiting).</div></div>
+        <div class="toolbar">
+          <input type="search" id="parts-search" placeholder="Search bus, part, comment…">
+        </div>
+      </div>
+      <div class="tabs" id="parts-tabs"></div>
+      <div class="table-scroll" id="parts-table"></div>
+    </section>
+
+    <section class="panel">
+      <h2>VOR history</h2>
+      <div class="sub">All VOR spells up to the selected date, newest first. Click a row to go back to the day it came off road.</div>
+      <div class="table-scroll" id="history-table"></div>
+    </section>
+  </div>
+</main>
+<div id="busy" class="hidden">Building report…</div>
+
+<script id="embedded-data" type="application/json">null</script>
+<script>
+/* ===== §0 Pristine copy (used for standalone HTML export) ===== */
+const PRISTINE = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+
+/* ===== §1 Utilities ===== */
+const DAY = 864e5, LINK_PRE = 7;
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = n => String(n).padStart(2, '0');
+const dn = (y, m, d) => Math.round(Date.UTC(y, m - 1, d) / DAY);
+function ymd(n) { const d = new Date(n * DAY); return [d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(), d.getUTCDay()]; }
+function fmtS(n) { if (n == null) return ''; const [, m, d] = ymd(n); return d + ' ' + MON[m - 1]; }
+function fmtL(n) { if (n == null) return ''; const [y, m, d] = ymd(n); return pad(d) + '/' + pad(m) + '/' + y; }
+function fmtW(n) { if (n == null) return ''; const [y, m, d, w] = ymd(n); return DOW[w] + ' ' + d + ' ' + MON[m - 1] + ' ' + y; }
+function isoOf(n) { const [y, m, d] = ymd(n); return y + '-' + pad(m) + '-' + pad(d); }
+function todayDn() { const t = new Date(); return dn(t.getFullYear(), t.getMonth() + 1, t.getDate()); }
+function parseDate(v) {
+  if (v == null || v === '') return null;
+  if (v instanceof Date) return isNaN(v) ? null : dn(v.getFullYear(), v.getMonth() + 1, v.getDate());
+  if (typeof v === 'number') return (v > 20000 && v < 90000) ? Math.floor(v) - 25569 : null;
+  const s = String(v).trim(); if (!s) return null;
+  let m = s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/); if (m) return dn(+m[1], +m[2], +m[3]);
+  m = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/);
+  if (m) { let y = +m[3]; if (y < 100) y += 2000; return dn(y, +m[2], +m[1]); }
+  m = s.match(/^(\d{1,2})(?:st|nd|rd|th)?[\s\-]+([A-Za-z]{3})[A-Za-z]*[\s\-,]+(\d{2,4})/);
+  if (m) { const mi = MON.findIndex(x => x.toLowerCase() === m[2].toLowerCase()); let y = +m[3]; if (y < 100) y += 2000; if (mi >= 0) return dn(y, mi + 1, +m[1]); }
+  if (/^\d+(\.\d+)?$/.test(s)) return parseDate(+s);
+  const t = Date.parse(s); if (!isNaN(t)) { const d = new Date(t); return dn(d.getFullYear(), d.getMonth() + 1, d.getDate()); }
+  return null;
+}
+function normBus(v) { if (v == null) return ''; return String(v).trim().replace(/\.0+$/, '').toUpperCase(); }
+function trunc(s, n) { s = String(s ?? ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+function plural(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
+
+/* ===== §2 Workbook parsing ===== */
+function findHeader(rows, test) {
+  for (let i = 0; i < Math.min(rows.length, 15); i++) {
+    const h = (rows[i] || []).map(c => String(c ?? '').toLowerCase().replace(/\s+/g, ' ').trim());
+    if (test(h)) return { i, h };
+  }
+  return null;
+}
+const colIdx = (h, re, not) => h.findIndex(c => re.test(c) && !(not && not.test(c)));
+function depotFrom(name) { return name.replace(/vor.*$/i, '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_\-]+/g, ' ').trim(); }
+
+function parseWorkbook(wb) {
+  const parts = [], logMap = new Map(), warnings = [];
+  let depot = '', foundParts = false, foundLog = false;
+  wb.SheetNames.forEach(name => {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: null });
+    const ph = findHeader(rows, h => h.some(c => /part/.test(c)) && h.some(c => /bus|fleet|vehicle/.test(c)));
+    if (ph) {
+      foundParts = true; if (!depot) depot = depotFrom(name);
+      const h = ph.h;
+      const c = {
+        req: colIdx(h, /request|raised/), ord: colIdx(h, /order/), bus: colIdx(h, /bus|fleet|vehicle/),
+        pno: colIdx(h, /part ?(no|num|#|code|ref)/), desc: colIdx(h, /desc/), com: colIdx(h, /comment|note|remark/),
+        due: colIdx(h, /due|eta|expected/), arr: colIdx(h, /arriv|receiv|reciev|recieved|delivered|fitted/)
+      };
+      if (c.bus < 0) { warnings.push(`Sheet “${name}”: no bus number column found.`); return; }
+      const get = (r, k) => c[k] >= 0 ? r[c[k]] : null;
+      for (let i = ph.i + 1; i < rows.length; i++) {
+        const r = rows[i] || []; const bus = normBus(get(r, 'bus')); if (!bus) continue;
+        parts.push({
+          id: parts.length, bus, pno: String(get(r, 'pno') ?? '').trim(), desc: String(get(r, 'desc') ?? '').trim(),
+          com: String(get(r, 'com') ?? '').trim(), req: parseDate(get(r, 'req')), ord: parseDate(get(r, 'ord')),
+          due: parseDate(get(r, 'due')), arr: parseDate(get(r, 'arr'))
+        });
+      }
+      return;
+    }
+    const lh = findHeader(rows, h => h.some(c => /date|day/.test(c)) && h.some(c => /bus|fleet|vehicle|vor|log/.test(c) && !/date/.test(c)));
+    if (lh) {
+      foundLog = true; if (!depot) depot = depotFrom(name);
+      const dc = colIdx(lh.h, /date|day/), bc = colIdx(lh.h, /bus|fleet|vehicle|vor|log/, /date/);
+      for (let i = lh.i + 1; i < rows.length; i++) {
+        const r = rows[i] || []; const d = parseDate(r[dc]); if (d == null) continue;
+        const cells = []; for (let j = bc; j < r.length; j++) if (j !== dc && r[j] != null && String(r[j]).trim() !== '') cells.push(String(r[j]));
+        if (!cells.length) continue; // blank row = not logged yet
+        const set = logMap.get(d) || new Set();
+        cells.join(',').split(/[,;\/\n\r\t ]+/).map(normBus).filter(b => b && !/^(NONE|NIL|N\/A|NA|-|0)$/.test(b)).forEach(b => set.add(b));
+        logMap.set(d, set);
+      }
+    }
+  });
+  if (!foundParts) warnings.push('No parts tab found (needs headers such as “Bus Number” and “Part Number”).');
+  if (!foundLog) warnings.push('No daily bus log tab found (needs headers “Date” and “Bus Numbers on Log”).');
+  const log = [...logMap].sort((a, b) => a[0] - b[0]).map(([d, s]) => [d, [...s]]);
+  return { parts, log, depot, warnings };
+}
+
+/* ===== §3 Model: VOR spells, part linking, status ===== */
+const anchorOf = p => p.req ?? p.ord ?? p.due ?? p.arr;
+
+function build(raw, cutoff) {
+  const log = raw.log.filter(([d]) => cutoff == null || d <= cutoff);
+  const eps = [], active = new Map();
+  log.forEach(([d, buses], li) => {
+    const S = new Set(buses);
+    for (const [b, ep] of active) if (!S.has(b)) { ep.end = d; active.delete(b); }
+    for (const b of S) {
+      if (!active.has(b)) { const ep = { id: eps.length, bus: b, start: d, end: null, last: d, fromStart: li === 0, parts: [] }; eps.push(ep); active.set(b, ep); }
+      active.get(b).last = d;
+    }
+  });
+  const byBus = new Map(); eps.forEach(e => { if (!byBus.has(e.bus)) byBus.set(e.bus, []); byBus.get(e.bus).push(e); });
+  const parts = raw.parts.map(p => ({ ...p })).filter(p => { const a = anchorOf(p); return cutoff == null || (a != null && a <= cutoff); });
+  if (cutoff != null) parts.forEach(p => { if (p.ord != null && p.ord > cutoff) p.ord = null; if (p.arr != null && p.arr > cutoff) p.arr = null; });
+  parts.forEach(p => {
+    p.ep = null; const a = anchorOf(p); if (a == null) return;
+    let best = null;
+    (byBus.get(p.bus) || []).forEach(e => {
+      if (a >= e.start - LINK_PRE && (e.end == null || a < e.end) && (!best || e.start > best.start)) best = e;
+    });
+    if (best) { p.ep = best; best.parts.push(p); }
+  });
+  eps.forEach(e => e.parts.sort((a, b) => (anchorOf(a) ?? 0) - (anchorOf(b) ?? 0)));
+  return { eps, parts, firstLog: log.length ? log[0][0] : null, lastLog: log.length ? log[log.length - 1][0] : null, logDays: log.length };
+}
+
+const epActive = (e, d) => e.start <= d && (e.end == null || d < e.end);
+const partOut = (p, d) => { const a = anchorOf(p); return a != null && a <= d && (p.arr == null || p.arr > d); };
+const epAwaiting = (e, d) => e.parts.some(p => partOut(p, d));
+function epDaysOff(e, d) { const end = e.end == null ? d + 1 : Math.min(e.end, d + 1); return Math.max(0, end - e.start); }
+function epAwaitDays(e, d) {
+  const end = e.end == null ? d + 1 : Math.min(e.end, d + 1); let n = 0;
+  for (let t = e.start; t < end; t++) if (epAwaiting(e, t)) n++;
+  return n;
+}
+function partStatus(p, d) {
+  const a = anchorOf(p);
+  if (a == null) return 'Unknown';
+  if (a > d) return 'Not yet raised';
+  if (p.arr != null && p.arr <= d) return 'Arrived';
+  if (p.ord == null || p.ord > d) return 'Not ordered';
+  if (p.due != null && p.due < d) return 'Overdue';
+  return 'On order';
+}
+const STATUS_COL = { 'Arrived': '#27ae60', 'Overdue': '#c0392b', 'On order': '#f39c12', 'Not ordered': '#9a9ab5', 'Not yet raised': '#c8c8da', 'Unknown': '#c8c8da' };
+const STATUS_BADGE = { 'Arrived': 'badge-green', 'Overdue': 'badge-red', 'On order': 'badge-amber', 'Not ordered': 'badge-grey', 'Not yet raised': 'badge-grey', 'Unknown': 'badge-grey' };
+function leadTime(p, d) { if (p.ord == null || p.ord > d) return null; return (p.arr != null && p.arr <= d ? p.arr : d) - p.ord; }
+
+function dayCounts(M, t) {
+  let off = 0, wait = 0;
+  M.eps.forEach(e => { if (epActive(e, t)) { off++; if (epAwaiting(e, t)) wait++; } });
+  return { off, wait, not: off - wait };
+}
+
+/* ===== §4 Demo data ===== */
+function demoData() {
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const ri = (a, b) => a + Math.floor(rnd() * (b - a + 1));
+  const pick = a => a[Math.floor(rnd() * a.length)];
+  const today = todayDn(), from = today - 90;
+  const fleet = Array.from({ length: 45 }, (_, i) => String(31000 + i * 7 + (i % 3)));
+  const descs = [['Brake caliper', 'BC-2210'], ['Air dryer cartridge', 'AD-0931'], ['Door ram', 'DR-5512'], ['Alternator', 'ALT-140'], ['Windscreen', 'WS-E400'], ['Coolant hose', 'CH-0077'], ['Wheelchair ramp motor', 'WRM-301'], ['Mirror arm', 'MA-1150'], ['Turbo actuator', 'TA-8820'], ['ECU', 'ECU-2C'], ['Rear light cluster', 'RL-4410'], ['Fan belt', 'FB-0950'], ['Destination display', 'DD-LED6'], ['Starter motor', 'SM-221'], ['Gearbox sensor', 'GS-ZF6']];
+  const comments = ['Ordered, confirmed next day delivery', 'Supplier back-ordered', 'Chased with supplier', 'Awaiting dealer confirmation', 'Part on van – ETA confirmed', 'Wrong part supplied, re-ordered', '', 'Expedited – emergency order', 'Sourced from other depot'];
+  const busy = new Map(), spells = [], parts = [];
+  for (let k = 0; k < 70; k++) {
+    const bus = pick(fleet), start = ri(from, today);
+    const needs = rnd() < 0.62;
+    const rows = [];
+    let end;
+    if (needs) {
+      const np = rnd() < 0.25 ? 2 : 1; let lastArr = start;
+      for (let j = 0; j < np; j++) {
+        const [desc, pno] = pick(descs);
+        const req = start + ri(0, 1), ord = (req < today - 3 || rnd() < 0.6) ? req + ri(0, 2) : null;
+        const due = ord != null ? ord + ri(1, 6) : null;
+        let arr = due != null ? due + ri(-1, rnd() < 0.3 ? 6 : 1) : null;
+        if (arr != null && arr > today) arr = null;
+        rows.push({ bus, pno, desc, com: pick(comments), req, ord, due, arr });
+        lastArr = arr == null ? Infinity : Math.max(lastArr, arr);
+      }
+      end = lastArr === Infinity ? null : lastArr + ri(0, 1);
+    } else end = start + ri(1, 5);
+    if (end != null && end > today) end = null;
+    const s = busy.get(bus) || [];
+    if (s.some(([a, b]) => start <= (b ?? Infinity) + 1 && (end ?? Infinity) >= a - 1)) continue;
+    s.push([start, end]); busy.set(bus, s); spells.push({ bus, start, end });
+    rows.forEach(r => parts.push({ id: parts.length, ...r }));
+  }
+  // a few parts for buses not off road (e.g. ordered for planned work)
+  for (let k = 0; k < 6; k++) { const [desc, pno] = pick(descs); const req = ri(from, today - 2); const ord = req + 1; const due = ord + 3; const arr = due <= today ? due : null; parts.push({ id: parts.length, bus: pick(fleet), pno, desc, com: 'Stock / planned work', req, ord, due, arr }); }
+  const log = [];
+  for (let t = from; t <= today; t++) log.push([t, spells.filter(s => s.start <= t && (s.end == null || t < s.end)).map(s => s.bus)]);
+  return { parts, log, depot: 'Demo Depot', source: 'Demo data', warnings: [] };
+}
+
+/* ===== §5 SVG renderers (shared by screen + PDF) ===== */
+let SVG_ID = 0;
+const LW = 230;
+function axisHeader(vs, ve, W, X, dw, HH, d) {
+  let s = `<rect x="0" y="0" width="${W}" height="${HH}" fill="#2D2A6E"/>`;
+  for (let t = vs; t <= ve; t++) {
+    const [, m, dd, w] = ymd(t), x = X(t);
+    if (dw >= 16) {
+      if (dd === 1 || t === vs) s += `<text x="${x + 3}" y="15" fill="#fff" font-size="10" opacity=".8">${MON[m - 1]}</text>`;
+      s += `<text x="${x + dw / 2}" y="${HH - 9}" fill="#fff" font-size="10" text-anchor="middle" opacity="${w === 0 || w === 6 ? .55 : .95}">${dd}</text>`;
+    } else if (w === 1 && x + 40 < W) {
+      s += `<text x="${x + 3}" y="${HH - 9}" fill="#fff" font-size="10" opacity=".9">${dd} ${MON[m - 1]}</text>`;
+      s += `<line x1="${x}" x2="${x}" y1="${HH - 20}" y2="${HH}" stroke="#fff" opacity=".35"/>`;
+    }
+    if (t === d) s += `<rect x="${x}" y="${HH - 4}" width="${Math.max(dw, 2)}" height="4" fill="#E5007D"/>`;
+    s += `<rect data-day="${t}" x="${x}" y="0" width="${dw}" height="${HH}" fill="transparent"><title>${fmtW(t)} – click to view this day</title></rect>`;
+  }
+  return s;
+}
+function gridBg(vs, ve, X, dw, y0, y1) {
+  let s = '';
+  for (let t = vs; t <= ve; t++) {
+    const w = ymd(t)[3];
+    if (w === 0 || w === 6) s += `<rect x="${X(t)}" y="${y0}" width="${dw}" height="${y1 - y0}" fill="#f1f1f7"/>`;
+    if (dw >= 10 || w === 1) s += `<line x1="${X(t)}" x2="${X(t)}" y1="${y0}" y2="${y1}" stroke="#ececf4"/>`;
+  }
+  return s;
+}
+
+function ganttSVG(M, d, vs, ve, W, rows, opts = {}) {
+  const HH = 40, EH = 30, PH = 19, n = ve - vs + 1, dw = (W - LW) / n;
+  const X = t => LW + (t - vs) * dw, XC = t => X(t) + dw / 2;
+  const clip = 'gc' + (++SVG_ID);
+  let H = HH; const blocks = rows.map(e => { const h = EH + e.parts.length * PH + (e.parts.length ? 6 : 0); const b = { e, y: H, h }; H += h; return b; });
+  if (!rows.length) H += 70;
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Segoe UI, Arial, sans-serif" font-size="11">`;
+  s += `<defs><clipPath id="${clip}"><rect x="${LW}" y="0" width="${W - LW}" height="${H}"/></clipPath></defs>`;
+  s += `<rect width="${W}" height="${H}" fill="#fff"/>`;
+  blocks.forEach((b, i) => { if (i % 2) s += `<rect x="0" y="${b.y}" width="${W}" height="${b.h}" fill="#fafafd"/>`; });
+  s += gridBg(vs, ve, X, dw, HH, H);
+  blocks.forEach(b => s += `<line x1="0" x2="${W}" y1="${b.y + b.h}" y2="${b.y + b.h}" stroke="#e0e0ec"/>`);
+  s += `<line x1="${LW}" x2="${LW}" y1="0" y2="${H}" stroke="#d0d0e0"/>`;
+  s += axisHeader(vs, ve, W, X, dw, HH, d);
+  s += `<text x="10" y="25" fill="#fff" font-weight="600" font-size="12">Bus / part</text>`;
+  if (!rows.length) s += `<text x="${W / 2}" y="${HH + 40}" text-anchor="middle" fill="#6b6b8a" font-size="13">${esc(opts.emptyText || 'No buses off road')}</text>`;
+
+  blocks.forEach(({ e, y }) => {
+    const act = epActive(e, d), future = e.start > d, wait = act && epAwaiting(e, d);
+    const days = epDaysOff(e, d);
+    // label column
+    s += `<text x="10" y="${y + 19}" font-weight="700" font-size="12.5" fill="#2D2A6E">${esc(e.bus)}</text>`;
+    let tag, tc;
+    if (future) { tag = 'Off ' + fmtS(e.start); tc = '#9a9ab5'; }
+    else if (!act) { tag = 'Back ' + fmtS(e.end) + ' · ' + days + 'd'; tc = '#27ae60'; }
+    else if (wait) { tag = 'Awaiting parts · ' + days + 'd'; tc = '#c0392b'; }
+    else { tag = (e.parts.length ? 'Parts in · ' : 'No parts · ') + days + 'd'; tc = '#2D2A6E'; }
+    s += `<text x="${LW - 8}" y="${y + 19}" text-anchor="end" font-size="10.5" font-weight="600" fill="${tc}">${esc(tag)}</text>`;
+    e.parts.forEach((p, i) => {
+      const py = y + EH + i * PH + PH / 2;
+      const lbl = trunc((p.desc || 'Part') + (p.pno ? ' (' + p.pno + ')' : ''), 34);
+      s += `<text x="18" y="${py + 4}" font-size="10.5" fill="#6b6b8a">– ${esc(lbl)}</text>`;
+    });
+    // timeline
+    s += `<g clip-path="url(#${clip})">`;
+    const endT = e.end == null ? ve + 2 : e.end;
+    const x1 = X(Math.max(e.start, vs - 1)), x2 = X(Math.min(endT, ve + 2));
+    const op = act ? 1 : (future ? .25 : .38);
+    const tip = `Bus ${e.bus} off road ${fmtL(e.start)}${e.fromStart ? ' (or earlier – first day of log)' : ''}\n` + (e.end != null ? `Back on road ${fmtL(e.end)} – ${e.end - e.start} day(s)` : `Still off road – ${days} day(s) as at ${fmtL(d)}`) + `\nParts linked: ${e.parts.length}` + (e.parts.length ? ` · days awaiting parts: ${epAwaitDays(e, d)}` : '');
+    s += `<g><title>${esc(tip)}</title><rect x="${x1}" y="${y + 8}" width="${Math.max(2, x2 - x1)}" height="15" rx="3" fill="#e74c3c" opacity="${op}"/>`;
+    if (x2 - Math.max(x1, LW) > 70) s += `<text x="${Math.max(x1, LW) + 6}" y="${y + 19}" font-size="10" fill="#fff" font-weight="600">VOR ${e.end != null ? (e.end - e.start) + 'd' : '– ongoing'}</text>`;
+    s += `</g>`;
+    if (e.end != null && e.end >= vs && e.end <= ve + 1) {
+      const bx = X(e.end);
+      s += `<g><title>Back on road ${fmtW(e.end)}</title><circle cx="${bx}" cy="${y + 15.5}" r="6" fill="#27ae60" stroke="#fff" stroke-width="1.5"/><path d="M${bx - 3} ${y + 15.5} l2 2.2 l4 -4.4" stroke="#fff" stroke-width="1.6" fill="none"/></g>`;
+      if (bx + 70 < W) s += `<text x="${bx + 10}" y="${y + 19}" font-size="10" fill="#27ae60" font-weight="600">On road</text>`;
+    }
+    e.parts.forEach((p, i) => {
+      const py = y + EH + i * PH + PH / 2, st = partStatus(p, d), col = STATUS_COL[st];
+      const pop = st === 'Not yet raised' ? .45 : 1;
+      const lt = leadTime(p, d);
+      const tip = `${p.desc || 'Part'}${p.pno ? ' – ' + p.pno : ''} (bus ${p.bus})\nRequested: ${fmtL(p.req) || '–'}\nOrdered: ${fmtL(p.ord) || '–'}\nDue: ${fmtL(p.due) || '–'}\nArrived: ${fmtL(p.arr) || '–'}\nStatus at ${fmtL(d)}: ${st}${lt != null ? ' · lead time ' + lt + 'd' : ''}${p.com ? '\nComment: ' + p.com : ''}`;
+      s += `<g opacity="${pop}"><title>${esc(tip)}</title>`;
+      s += `<rect x="${LW}" y="${py - PH / 2}" width="${W - LW}" height="${PH}" fill="transparent"/>`;
+      const req = p.req ?? p.ord;
+      const openEnd = Math.max(d, req ?? d) + 1;
+      if (req != null) {
+        const until = p.ord ?? p.arr ?? null;
+        const ux = until != null ? XC(until) : X(openEnd);
+        s += `<line x1="${XC(req)}" x2="${ux}" y1="${py}" y2="${py}" stroke="${until != null ? '#2D2A6E' : '#9a9ab5'}" stroke-width="${until != null ? 1.4 : 5}" ${until != null ? 'stroke-dasharray="3 3"' : 'stroke-linecap="round" opacity=".8"'}/>`;
+      }
+      if (p.ord != null) {
+        const bEnd = p.arr != null ? XC(p.arr) : X(Math.max(openEnd, p.ord + 1));
+        s += `<rect x="${XC(p.ord)}" y="${py - 5}" width="${Math.max(3, bEnd - XC(p.ord))}" height="10" rx="2" fill="${p.arr != null ? '#27ae60' : col}"/>`;
+        if (p.arr == null) s += `<path d="M${bEnd} ${py - 5} l5 5 l-5 5 z" fill="${col}"/>`;
+      }
+      if (req != null) s += `<circle cx="${XC(req)}" cy="${py}" r="3.6" fill="#fff" stroke="#2D2A6E" stroke-width="1.5"/>`;
+      if (p.due != null) { const dx = XC(p.due), late = st === 'Overdue'; s += `<path d="M${dx} ${py - 6} L${dx + 6} ${py} L${dx} ${py + 6} L${dx - 6} ${py} Z" fill="${late ? '#c0392b' : '#fff'}" stroke="${late ? '#fff' : '#2D2A6E'}" stroke-width="1.4"/>`; }
+      if (p.arr != null) { const ax = XC(p.arr); s += `<circle cx="${ax}" cy="${py}" r="5" fill="#27ae60" stroke="#fff" stroke-width="1.2"/><path d="M${ax - 2.5} ${py} l1.8 1.9 l3.4 -3.8" stroke="#fff" stroke-width="1.4" fill="none"/>`; }
+      s += `</g>`;
+    });
+    s += `</g>`;
+  });
+  // selected date + today markers
+  const tn = todayDn();
+  if (tn >= vs && tn <= ve && tn !== d) s += `<line x1="${XC(tn)}" x2="${XC(tn)}" y1="${HH}" y2="${H}" stroke="#2D2A6E" stroke-dasharray="2 4" opacity=".5"/>`;
+  if (d >= vs && d <= ve) s += `<rect x="${X(d)}" y="${HH}" width="${dw}" height="${H - HH}" fill="#E5007D" opacity=".07"/><line x1="${XC(d)}" x2="${XC(d)}" y1="${HH}" y2="${H}" stroke="#E5007D" stroke-width="1.5"/>`;
+  s += '</svg>';
+  return { svg: s, h: H, blocks };
+}
+
+function trendSVG(M, d, vs, ve, W) {
+  const HH = 22, CH = 150, BOT = 26, H = HH + CH + BOT, n = ve - vs + 1, dw = (W - LW) / n;
+  const X = t => LW + (t - vs) * dw;
+  const lastT = M.lastLog == null ? null : Math.max(M.lastLog, Math.min(d, todayDn()));
+  const data = [];
+  if (M.firstLog != null) for (let t = Math.max(vs, M.firstLog); t <= Math.min(ve, lastT); t++) data.push({ t, ...dayCounts(M, t) });
+  const max = Math.max(4, ...data.map(x => x.off));
+  const step = max <= 8 ? 1 : max <= 20 ? 2 : max <= 50 ? 5 : 10;
+  const top = Math.ceil(max / step) * step, Y = v => HH + CH - v / top * CH;
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Segoe UI, Arial, sans-serif" font-size="11">`;
+  s += `<rect width="${W}" height="${H}" fill="#fff"/>`;
+  s += gridBg(vs, ve, X, dw, HH, HH + CH).replace(/stroke="#ececf4"/g, 'stroke="#f4f4f8"');
+  for (let v = 0; v <= top; v += step) s += `<line x1="${LW}" x2="${W}" y1="${Y(v)}" y2="${Y(v)}" stroke="${v ? '#e6e6ef' : '#b8b8cc'}"/><text x="${LW - 6}" y="${Y(v) + 4}" text-anchor="end" fill="#6b6b8a" font-size="10">${v}</text>`;
+  s += `<text x="10" y="${HH + 14}" font-weight="700" fill="#2D2A6E" font-size="12">Buses off road</text>`;
+  s += `<rect x="10" y="${HH + 30}" width="14" height="10" fill="#e74c3c" rx="2"/><text x="30" y="${HH + 39}" fill="#2D2A6E">Awaiting parts</text>`;
+  s += `<rect x="10" y="${HH + 50}" width="14" height="10" fill="#2D2A6E" rx="2"/><text x="30" y="${HH + 59}" fill="#2D2A6E">Not awaiting parts</text>`;
+  const cur = data.find(x => x.t === d);
+  if (cur) s += `<text x="10" y="${HH + 90}" fill="#6b6b8a" font-size="10.5">On ${fmtS(d)}: ${cur.off} off road</text><text x="10" y="${HH + 105}" fill="#c0392b" font-size="10.5">${cur.wait} awaiting · <tspan fill="#2D2A6E">${cur.not} not</tspan></text>`;
+  const bw = Math.max(1, dw * (dw > 6 ? .72 : .9));
+  data.forEach(x => {
+    const bx = X(x.t) + (dw - bw) / 2;
+    const tip = `${fmtW(x.t)}\n${x.off} off road\n${x.wait} awaiting parts\n${x.not} not awaiting parts`;
+    s += `<g data-day="${x.t}"><title>${esc(tip)}</title><rect x="${X(x.t)}" y="${HH}" width="${dw}" height="${CH}" fill="transparent"/>`;
+    if (x.wait) s += `<rect x="${bx}" y="${Y(x.wait)}" width="${bw}" height="${Y(0) - Y(x.wait)}" fill="#e74c3c"/>`;
+    if (x.not) s += `<rect x="${bx}" y="${Y(x.off)}" width="${bw}" height="${Y(x.wait) - Y(x.off)}" fill="#2D2A6E"/>`;
+    if (dw >= 18 && x.off) s += `<text x="${X(x.t) + dw / 2}" y="${Y(x.off) - 3}" text-anchor="middle" font-size="9.5" fill="#6b6b8a">${x.off}</text>`;
+    s += `</g>`;
+  });
+  if (d >= vs && d <= ve) s += `<rect x="${X(d)}" y="${HH}" width="${dw}" height="${CH}" fill="none" stroke="#E5007D" stroke-width="2"/><text x="${X(d) + dw / 2}" y="${HH - 7}" text-anchor="middle" fill="#E5007D" font-size="10" font-weight="700">${fmtS(d)}</text>`;
+  for (let t = vs; t <= ve; t++) {
+    const [, m, dd, w] = ymd(t);
+    const show = dw >= 16 || (dw >= 4 && w === 1) || (dw < 4 && dd === 1);
+    if (show && X(t) + 30 < W) s += `<text x="${X(t) + (dw >= 16 ? dw / 2 : 2)}" y="${HH + CH + 15}" text-anchor="${dw >= 16 ? 'middle' : 'start'}" font-size="9.5" fill="#6b6b8a">${dw >= 16 && dd !== 1 && t !== vs ? dd : dd + ' ' + MON[m - 1]}</text>`;
+  }
+  if (!data.length) s += `<text x="${(W + LW) / 2}" y="${HH + CH / 2}" text-anchor="middle" fill="#6b6b8a">No daily log entries in this window</text>`;
+  s += '</svg>';
+  return { svg: s, h: H };
+}
+
+/* ===== §6 State + view ===== */
+let RAW = null, FULL = null;
+const S = { asAt: null, range: '28', mode: 'ondate', asKnown: false, partTab: 'out', search: '' };
+const model = () => S.asKnown ? build(RAW, S.asAt) : FULL;
+function bounds() {
+  const ds = []; RAW.log.forEach(([d]) => ds.push(d));
+  RAW.parts.forEach(p => ['req', 'ord', 'due', 'arr'].forEach(k => p[k] != null && ds.push(p[k])));
+  if (!ds.length) { const t = todayDn(); return { min: t, max: t }; }
+  return { min: Math.min(...ds), max: Math.max(...ds) };
+}
+function windowOf(M) {
+  const b = bounds();
+  if (S.range === 'all') return { vs: b.min - 1, ve: Math.max(b.max, S.asAt) + 3 };
+  const r = +S.range, ahead = Math.max(5, Math.round(r * 0.18));
+  return { vs: S.asAt - (r - ahead) + 1, ve: S.asAt + ahead };
+}
+function ganttRows(M, vs, ve) {
+  const d = S.asAt;
+  let rows = S.mode === 'ondate' ? M.eps.filter(e => epActive(e, d)) : M.eps.filter(e => e.start <= ve && (e.end == null || e.end >= vs));
+  return rows.sort((a, b) => a.start - b.start || a.bus.localeCompare(b.bus, undefined, { numeric: true }));
+}
+
+function loadRaw(raw, fromStandalone) {
+  RAW = raw; FULL = build(RAW, null);
+  const b = bounds();
+  const v = raw.view || {};
+  S.asAt = v.asAt ?? (FULL.lastLog ?? Math.min(b.max, todayDn()));
+  if (v.range) S.range = v.range; if (v.mode) S.mode = v.mode; if (v.asKnown != null) S.asKnown = v.asKnown;
+  $('#range-sel').value = S.range; $('#asknown').checked = S.asKnown;
+  $('#title-depot').textContent = raw.depot ? raw.depot + ' ' : '';
+  $('#hdr-meta').textContent = (raw.source || '') + (raw.loadedAt ? ' · loaded ' + new Date(raw.loadedAt).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) : '');
+  $('#empty').classList.add('hidden'); $('#dash').classList.remove('hidden');
+  $('#btn-pdf').disabled = false; $('#btn-html').disabled = false;
+  const w = [...(raw.warnings || [])];
+  if (!raw.log.length) w.push('The daily bus log is empty – no VOR spells can be worked out yet.');
+  const un = FULL.parts.filter(p => !p.ep).length;
+  if (un) w.push(`${plural(un, 'part')} could not be matched to a VOR spell (bus not on the daily log within ${LINK_PRE} days of the request) – shown under “Not linked” in the parts log.`);
+  $('#warnings').innerHTML = w.map(esc).join('<br>'); $('#warnings').classList.toggle('hidden', !w.length);
+  $('#banner').classList.toggle('hidden', !fromStandalone);
+  if (fromStandalone) $('#banner').innerHTML = `Standalone snapshot exported ${esc(new Date(raw.exportedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }))} from <b>${esc(raw.source || 'workbook')}</b>. Browse freely – upload a newer workbook to refresh.`;
+  render();
+}
+
+function setAsAt(d) { const b = bounds(); S.asAt = Math.max(b.min - 7, Math.min(b.max + 30, d)); render(); }
+
+function render() {
+  if (!RAW) return;
+  const M = model(), d = S.asAt, { vs, ve } = windowOf(M), b = bounds();
+  $('#asat-label').textContent = fmtW(d);
+  $('#asat-input').value = isoOf(d);
+  const sl = $('#asat-slider'); sl.min = b.min; sl.max = Math.max(b.max, d); sl.value = d;
+  $('#slider-min').textContent = fmtS(b.min); $('#slider-max').textContent = fmtS(Math.max(b.max, d));
+  document.querySelectorAll('#mode-seg .toggle-btn').forEach(x => x.classList.toggle('active', x.dataset.mode === S.mode));
+  renderKpis(M, d);
+  const rows = ganttRows(M, vs, ve);
+  const W = Math.max(760, $('#gantt').clientWidth || 1100);
+  $('#gantt-title').textContent = S.mode === 'ondate' ? `Off road on ${fmtW(d)} – ${plural(rows.length, 'bus')}`.replace('buss', 'buses') : `All VOR spells ${fmtS(vs)} – ${fmtS(ve)} (${rows.length})`;
+  $('#gantt').innerHTML = ganttSVG(M, d, vs, ve, W, rows, { emptyText: S.mode === 'ondate' ? 'No buses off road on this date' : 'No VOR spells in this window' }).svg;
+  $('#trend').innerHTML = trendSVG(M, d, vs, ve, W).svg;
+  renderOffroad(M, d); renderParts(M, d); renderHistory(M, d);
+}
+
+function kpiData(M, d) {
+  const act = M.eps.filter(e => epActive(e, d)), wait = act.filter(e => epAwaiting(e, d));
+  const out = M.parts.filter(p => partOut(p, d)), overdue = out.filter(p => partStatus(p, d) === 'Overdue');
+  const days = act.map(e => epDaysOff(e, d));
+  const arrived = M.parts.filter(p => p.ord != null && p.arr != null && p.arr <= d);
+  const avgLead = arrived.length ? arrived.reduce((s, p) => s + (p.arr - p.ord), 0) / arrived.length : null;
+  return { off: act.length, wait: wait.length, not: act.length - wait.length, out: out.length, overdue: overdue.length,
+    avg: days.length ? days.reduce((a, b) => a + b, 0) / days.length : 0, longest: days.length ? Math.max(...days) : 0,
+    longestBus: act.length ? act[days.indexOf(Math.max(...days))].bus : '', avgLead, pct: act.length ? Math.round(wait.length / act.length * 100) : 0 };
+}
+function renderKpis(M, d) {
+  const k = kpiData(M, d);
+  $('#kpis').innerHTML = `
+    <div class="kpi navy"><div class="v">${k.off}</div><div class="l">Buses off road</div>
+      <div class="split-bar" title="${k.wait} awaiting / ${k.not} not awaiting"><div style="width:${k.off ? k.wait / k.off * 100 : 0}%;background:#e74c3c"></div><div style="width:${k.off ? k.not / k.off * 100 : 0}%;background:#2D2A6E"></div></div></div>
+    <div class="kpi red"><div class="v">${k.wait}</div><div class="l">Off road – awaiting parts (${k.pct}%)</div></div>
+    <div class="kpi navy"><div class="v">${k.not}</div><div class="l">Off road – not awaiting parts</div></div>
+    <div class="kpi amber"><div class="v">${k.out}</div><div class="l">Parts outstanding</div></div>
+    <div class="kpi red"><div class="v">${k.overdue}</div><div class="l">Parts past due date</div></div>
+    <div class="kpi pink"><div class="v">${k.avg.toFixed(1)}</div><div class="l">Avg days off road (current)</div></div>
+    <div class="kpi pink"><div class="v">${k.longest}</div><div class="l">Longest off road${k.longestBus ? ' – ' + esc(k.longestBus) : ''} (days)</div></div>
+    <div class="kpi green"><div class="v">${k.avgLead == null ? '–' : k.avgLead.toFixed(1)}</div><div class="l">Avg part lead time (days, ordered → arrived)</div></div>`;
+}
+
+/* ===== §7 Tables ===== */
+function partCell(p, d) {
+  const st = partStatus(p, d);
+  return `<div class="part-line"><span class="${STATUS_BADGE[st]}">${st}</span> ${esc(p.desc || 'Part')}${p.pno ? ' <span class="muted">(' + esc(p.pno) + ')</span>' : ''}${p.due != null ? ' · due <span class="' + (st === 'Overdue' ? 'overdue' : '') + '">' + fmtS(p.due) + '</span>' : ''}</div>`;
+}
+function offroadRows(M, d) {
+  return M.eps.filter(e => epActive(e, d)).map(e => ({ e, days: epDaysOff(e, d), wait: epAwaiting(e, d), wd: epAwaitDays(e, d) }))
+    .sort((a, b) => (b.wait - a.wait) || (b.days - a.days));
+}
+function renderOffroad(M, d) {
+  const rows = offroadRows(M, d);
+  $('#offroad-title').textContent = `Off road on ${fmtW(d)} – ${rows.length} (${rows.filter(r => r.wait).length} awaiting parts, ${rows.filter(r => !r.wait).length} not)`;
+  if (!rows.length) { $('#offroad-table').innerHTML = '<div class="empty muted" style="padding:24px">No buses on the log for this date.</div>'; return; }
+  $('#offroad-table').innerHTML = `<table class="wo-table"><thead><tr><th>Bus</th><th>Off road since</th><th>Days off</th><th>Status</th><th>Days awaiting parts</th><th>Parts</th><th>Latest comment</th></tr></thead><tbody>` +
+    rows.map(({ e, days, wait, wd }) => {
+      const parts = e.parts.filter(p => anchorOf(p) <= d);
+      const com = [...parts].reverse().find(p => p.com)?.com || '';
+      const cls = wait ? (parts.some(p => partStatus(p, d) === 'Overdue') ? 'r-red' : 'r-amber') : '';
+      return `<tr class="${cls}"><td><b>${esc(e.bus)}</b></td><td>${fmtL(e.start)}${e.fromStart ? ' <span class="muted" title="First day of the log – may have been off road earlier">≤</span>' : ''}</td><td class="num">${days}</td>
+        <td>${wait ? '<span class="badge-red">Awaiting parts</span>' : '<span class="badge-navy">Not awaiting parts</span>'}</td><td class="num">${parts.length ? wd : '–'}</td>
+        <td>${parts.length ? parts.map(p => partCell(p, d)).join('') : '<span class="muted">No parts logged</span>'}</td><td>${esc(com)}</td></tr>`;
+    }).join('') + '</tbody></table>';
+}
+const PART_TABS = [['out', 'Outstanding'], ['overdue', 'Overdue'], ['arrived', 'Arrived'], ['unlinked', 'Not linked'], ['all', 'All']];
+function partsFiltered(M, d, tab) {
+  const q = S.search.trim().toLowerCase();
+  return M.parts.filter(p => {
+    const st = partStatus(p, d);
+    if (tab === 'out' && !partOut(p, d)) return false;
+    if (tab === 'overdue' && st !== 'Overdue') return false;
+    if (tab === 'arrived' && st !== 'Arrived') return false;
+    if (tab === 'unlinked' && p.ep) return false;
+    if (tab !== 'unlinked' && tab !== 'all' && st === 'Not yet raised') return false;
+    if (q && ![p.bus, p.pno, p.desc, p.com].join(' ').toLowerCase().includes(q)) return false;
+    return true;
+  }).sort((a, b) => (anchorOf(b) ?? 0) - (anchorOf(a) ?? 0));
+}
+function renderParts(M, d) {
+  $('#parts-tabs').innerHTML = PART_TABS.map(([k, l]) => `<button class="toggle-btn ${S.partTab === k ? 'active' : ''}" data-ptab="${k}">${l}<span class="count-pill">${partsFiltered(M, d, k).length}</span></button>`).join('');
+  const rows = partsFiltered(M, d, S.partTab);
+  if (!rows.length) { $('#parts-table').innerHTML = '<div class="empty muted" style="padding:24px">No parts match.</div>'; return; }
+  $('#parts-table').innerHTML = `<table class="wo-table"><thead><tr><th>Bus</th><th>Part no.</th><th>Description</th><th>Requested</th><th>Ordered</th><th>Due</th><th>Arrived</th><th>Lead time</th><th>Status</th><th>VOR spell</th><th>Comments</th></tr></thead><tbody>` +
+    rows.map(p => {
+      const st = partStatus(p, d), lt = leadTime(p, d);
+      const cls = { 'Overdue': 'r-red', 'On order': 'r-amber', 'Not ordered': 'r-amber', 'Arrived': 'r-green' }[st] || '';
+      return `<tr class="${cls}"><td><b>${esc(p.bus)}</b></td><td>${esc(p.pno)}</td><td>${esc(p.desc)}</td><td>${fmtL(p.req)}</td><td>${fmtL(p.ord)}</td>
+        <td class="${st === 'Overdue' ? 'overdue' : ''}">${fmtL(p.due)}</td><td>${fmtL(p.arr)}</td><td class="num">${lt == null ? '–' : lt + 'd' + (st === 'Arrived' ? '' : '+')}</td>
+        <td><span class="${STATUS_BADGE[st]}">${st}</span></td><td>${p.ep ? 'Off ' + fmtS(p.ep.start) + (p.ep.end != null ? ' → ' + fmtS(p.ep.end) : ' → ongoing') : '<span class="muted">Not on log</span>'}</td><td>${esc(p.com)}</td></tr>`;
+    }).join('') + '</tbody></table>';
+}
+function historyRows(M, d) { return M.eps.filter(e => e.start <= d).sort((a, b) => b.start - a.start); }
+function renderHistory(M, d) {
+  const rows = historyRows(M, d);
+  if (!rows.length) { $('#history-table').innerHTML = '<div class="empty muted" style="padding:24px">No VOR spells yet.</div>'; return; }
+  $('#history-table').innerHTML = `<table class="wo-table"><thead><tr><th>Bus</th><th>Off road</th><th>Back on road</th><th>Days off</th><th>Parts</th><th>Days awaiting parts</th><th>Days not awaiting</th><th>Status at ${fmtS(d)}</th></tr></thead><tbody>` +
+    rows.map(e => {
+      const act = epActive(e, d), days = epDaysOff(e, d), wd = epAwaitDays(e, d);
+      return `<tr class="click ${act ? (epAwaiting(e, d) ? 'r-red' : 'r-amber') : ''}" data-goto="${e.start}" title="Go to ${fmtL(e.start)}"><td><b>${esc(e.bus)}</b></td><td>${fmtL(e.start)}</td><td>${e.end != null && e.end <= d ? fmtL(e.end) : '<span class="muted">–</span>'}</td>
+        <td class="num">${days}</td><td>${e.parts.filter(p => anchorOf(p) <= d).map(p => esc(p.desc || p.pno || 'Part')).join(', ') || '<span class="muted">None</span>'}</td><td class="num">${wd}</td><td class="num">${days - wd}</td>
+        <td>${act ? (epAwaiting(e, d) ? '<span class="badge-red">Off – awaiting parts</span>' : '<span class="badge-navy">Off – not awaiting</span>') : '<span class="badge-green">Back on road</span>'}</td></tr>`;
+    }).join('') + '</tbody></table>';
+}
+
+/* ===== §8 Exports ===== */
+function svgToPng(svg, w, h) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => { const c = document.createElement('canvas'); c.width = w * 2; c.height = h * 2; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.scale(2, 2); x.drawImage(img, 0, 0, w, h); resolve(c.toDataURL('image/jpeg', 0.92)); };
+    img.onerror = reject;
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  });
+}
+const fileStamp = () => ((RAW.depot || 'VOR').replace(/\s+/g, '-') + '-' + isoOf(S.asAt));
+function download(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); }
+
+async function exportPDF() {
+  if (!window.jspdf || !window.jspdf.jsPDF) { alert('The PDF library could not be loaded – check your internet connection and try again.'); return; }
+  $('#busy').classList.remove('hidden');
+  try {
+    const { jsPDF } = window.jspdf, doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const PW = 297, PH = 210, MG = 10, CW = PW - 2 * MG, TOP = 22, BOTTOM = PH - 12;
+    const M = model(), d = S.asAt, { vs, ve } = windowOf(M), k = kpiData(M, d);
+    const title = `${RAW.depot ? RAW.depot + ' ' : ''}VOR Parts Report`;
+    const band = sub => {
+      doc.setFillColor(45, 42, 110); doc.rect(0, 0, PW, 16, 'F');
+      doc.setTextColor(255); doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.text(title, MG, 10.5);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.text(sub, PW - MG, 10.5, { align: 'right' });
+      doc.setFillColor(229, 0, 125); doc.rect(0, 16, PW, 1.2, 'F'); doc.setTextColor(45, 42, 110);
+    };
+    const subTxt = `As at ${fmtW(d)}${S.asKnown ? ' (as known on the day)' : ''}`;
+    const PX = 1400, mmPerPx = CW / PX;
+    // Page 1 – KPIs + trend + off road table
+    band(subTxt);
+    const kp = [[k.off, 'Buses off road', [45, 42, 110]], [k.wait, `Awaiting parts (${k.pct}%)`, [231, 76, 60]], [k.not, 'Not awaiting parts', [45, 42, 110]], [k.out, 'Parts outstanding', [243, 156, 18]], [k.overdue, 'Parts past due', [231, 76, 60]], [k.avg.toFixed(1), 'Avg days off road', [229, 0, 125]], [k.longest, 'Longest off (days)', [229, 0, 125]], [k.avgLead == null ? '-' : k.avgLead.toFixed(1), 'Avg lead time (d)', [39, 174, 96]]];
+    const kw = (CW - 7 * 3) / 8;
+    kp.forEach(([v, l, c], i) => {
+      const x = MG + i * (kw + 3), y = TOP;
+      doc.setDrawColor(224, 224, 236); doc.setFillColor(255, 255, 255); doc.rect(x, y, kw, 18, 'FD');
+      doc.setFillColor(...c); doc.rect(x, y, kw, 1.5, 'F');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(...(c[0] === 231 ? [192, 57, 43] : [45, 42, 110])); doc.text(String(v), x + 3, y + 10);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(107, 107, 138); doc.text(l, x + 3, y + 15);
+    });
+    doc.setTextColor(45, 42, 110); doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+    doc.text(`Off road per day - awaiting parts vs not awaiting (${fmtS(vs)} - ${fmtS(ve)})`, MG, TOP + 26);
+    const tr = trendSVG(M, d, vs, ve, PX);
+    doc.addImage(await svgToPng(tr.svg, PX, tr.h), 'JPEG', MG, TOP + 28, CW, tr.h * mmPerPx);
+    let y = TOP + 30 + tr.h * mmPerPx + 4;
+    doc.text(`Off road on ${fmtW(d)}`, MG, y);
+    const statusFill = { 'Awaiting parts': [250, 219, 216], 'Overdue': [250, 219, 216], 'On order': [253, 235, 208], 'Not ordered': [253, 235, 208], 'Arrived': [212, 239, 223] };
+    const tbl = (startY, head, body, colStyles, rowFill) => doc.autoTable({
+      startY, head: [head], body, margin: { left: MG, right: MG, top: TOP, bottom: 14 }, styles: { fontSize: 8, cellPadding: 1.6, textColor: [45, 42, 110], lineColor: [224, 224, 236], lineWidth: 0.1 },
+      headStyles: { fillColor: [45, 42, 110], textColor: 255, fontStyle: 'bold' }, columnStyles: colStyles || {},
+      didParseCell: h => { if (h.section === 'body' && rowFill) { const f = rowFill(h.row.index); if (f) h.cell.styles.fillColor = f; } },
+      didDrawPage: () => band(subTxt)
+    });
+    const off = offroadRows(M, d);
+    tbl(y + 2, ['Bus', 'Off road since', 'Days off', 'Status', 'Days awaiting', 'Parts (status / due)', 'Latest comment'],
+      off.map(({ e, days, wait, wd }) => { const ps = e.parts.filter(p => anchorOf(p) <= d); return [e.bus, fmtL(e.start), days, wait ? 'Awaiting parts' : 'Not awaiting parts', ps.length ? wd : '-', ps.map(p => `${partStatus(p, d)}: ${p.desc || 'Part'}${p.pno ? ' (' + p.pno + ')' : ''}${p.due != null ? ' - due ' + fmtL(p.due) : ''}`).join('\n') || 'No parts logged', [...ps].reverse().find(p => p.com)?.com || '']; }),
+      { 5: { cellWidth: 90 } }, i => off[i].wait ? statusFill['Awaiting parts'] : null);
+    if (!off.length) { doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.text('No buses on the log for this date.', MG, doc.lastAutoTable.finalY + 6); }
+    // Gantt pages
+    const rows = ganttRows(M, vs, ve), maxPx = (BOTTOM - TOP - 8) / mmPerPx;
+    const chunks = []; let cur = [], h = 40;
+    rows.forEach(e => { const eh = 30 + e.parts.length * 19 + (e.parts.length ? 6 : 0); if (cur.length && h + eh > maxPx) { chunks.push(cur); cur = []; h = 40; } cur.push(e); h += eh; });
+    chunks.push(cur);
+    for (let i = 0; i < chunks.length; i++) {
+      doc.addPage(); band(subTxt);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+      doc.text((S.mode === 'ondate' ? `Timeline - buses off road on ${fmtW(d)}` : `Timeline - all VOR spells ${fmtS(vs)} - ${fmtS(ve)}`) + (chunks.length > 1 ? ` (${i + 1}/${chunks.length})` : ''), MG, TOP + 2);
+      const g = ganttSVG(M, d, vs, ve, PX, chunks[i], { emptyText: 'No buses off road on this date' });
+      doc.addImage(await svgToPng(g.svg, PX, g.h), 'JPEG', MG, TOP + 5, CW, g.h * mmPerPx);
+      if (i === chunks.length - 1) {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(107, 107, 138);
+        doc.text('Red bar = off road · green dot = back on road · hollow dot = part requested · grey = not ordered · amber = on order · dark red = overdue · green bar = ordered to arrived · diamond = due date · pink line = report date', MG, BOTTOM - 1);
+        doc.setTextColor(45, 42, 110);
+      }
+    }
+    // Parts + history
+    doc.addPage(); band(subTxt); doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+    const pr = partsFiltered(M, d, 'all').filter(p => partStatus(p, d) !== 'Not yet raised' && (partOut(p, d) || (anchorOf(p) >= vs)));
+    doc.text(`Parts log - outstanding plus anything raised since ${fmtS(vs)} (${pr.length})`, MG, TOP + 2);
+    tbl(TOP + 5, ['Bus', 'Part no.', 'Description', 'Requested', 'Ordered', 'Due', 'Arrived', 'Lead (d)', 'Status', 'VOR spell', 'Comments'],
+      pr.map(p => { const lt = leadTime(p, d); return [p.bus, p.pno, p.desc, fmtL(p.req), fmtL(p.ord), fmtL(p.due), fmtL(p.arr), lt == null ? '-' : lt, partStatus(p, d), p.ep ? 'Off ' + fmtS(p.ep.start) + (p.ep.end != null ? ' - ' + fmtS(p.ep.end) : ' - ongoing') : 'Not on log', p.com]; }),
+      { 10: { cellWidth: 55 } }, i => statusFill[partStatus(pr[i], d)]);
+    const hr = historyRows(M, d).filter(e => e.end == null || e.end >= vs);
+    let hy = doc.lastAutoTable.finalY + 10; if (hy > BOTTOM - 30) { doc.addPage(); band(subTxt); hy = TOP + 2; }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text(`VOR history - spells active since ${fmtS(vs)} (${hr.length})`, MG, hy);
+    tbl(hy + 3, ['Bus', 'Off road', 'Back on road', 'Days off', 'Days awaiting parts', 'Days not awaiting', 'Parts', 'Status'],
+      hr.map(e => { const days = epDaysOff(e, d), wd = epAwaitDays(e, d), act = epActive(e, d); return [e.bus, fmtL(e.start), e.end != null && e.end <= d ? fmtL(e.end) : '-', days, wd, days - wd, e.parts.filter(p => anchorOf(p) <= d).map(p => p.desc || p.pno || 'Part').join(', ') || 'None', act ? (epAwaiting(e, d) ? 'Off - awaiting parts' : 'Off - not awaiting') : 'Back on road']; }),
+      { 6: { cellWidth: 80 } }, i => { const e = hr[i]; return epActive(e, d) ? (epAwaiting(e, d) ? statusFill['Awaiting parts'] : statusFill['On order']) : null; });
+    // footers
+    const n = doc.getNumberOfPages(), gen = new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+    for (let i = 1; i <= n; i++) {
+      doc.setPage(i); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(107, 107, 138);
+      doc.text(`Designed by First Bus Franchise · Engineering   |   Source: ${RAW.source || 'workbook'}   |   Generated ${gen}`, MG, PH - 5);
+      doc.text(`Page ${i} of ${n}`, PW - MG, PH - 5, { align: 'right' });
+    }
+    doc.save(`VOR-Parts-Report-${fileStamp()}.pdf`);
+  } catch (err) { console.error(err); alert('PDF export failed: ' + err.message); }
+  finally { $('#busy').classList.add('hidden'); }
+}
+
+function exportHTML() {
+  const data = { parts: RAW.parts, log: RAW.log, depot: RAW.depot, source: RAW.source, loadedAt: RAW.loadedAt, warnings: RAW.warnings, exportedAt: Date.now(), view: { asAt: S.asAt, range: S.range, mode: S.mode, asKnown: S.asKnown } };
+  const json = JSON.stringify(data).replace(/</g, '\\u003c');
+  const html = PRISTINE.replace(/(<script id="embedded-data" type="application\/json">)[\s\S]*?(<\/script>)/, (m, a, b) => a + json + b);
+  download(new Blob([html], { type: 'text/html' }), `VOR-Parts-Tracker-${fileStamp()}.html`);
+}
+
+function downloadTemplate() {
+  if (!window.XLSX) { alert('Excel library not loaded – check your internet connection.'); return; }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Date Requested', 'Date Ordered', 'Bus Number', 'Part Number', 'Part Description', 'Comments', 'Date Due', 'Date Arrived']]), 'DepotVorParts');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Date', 'Bus Numbers on Log']]), 'DepotVorBuses');
+  XLSX.writeFile(wb, 'VOR-Parts-Log-Template.xlsx');
+}
+
+/* ===== §9 Events + init ===== */
+function handleFile(f) {
+  if (!f) return;
+  if (!window.XLSX) { alert('The Excel library could not be loaded – check your internet connection.'); return; }
+  const rd = new FileReader();
+  rd.onload = ev => {
+    try {
+      const raw = parseWorkbook(XLSX.read(new Uint8Array(ev.target.result), { type: 'array' }));
+      raw.source = f.name; raw.loadedAt = Date.now();
+      try { localStorage.setItem('vorPartsTracker', JSON.stringify(raw)); } catch (e) {}
+      loadRaw(raw, false);
+    } catch (err) { console.error(err); alert('Could not read that file: ' + err.message); }
+  };
+  rd.readAsArrayBuffer(f);
+}
+$('#btn-upload').onclick = $('#btn-upload2').onclick = () => $('#file-input').click();
+$('#file-input').onchange = e => { handleFile(e.target.files[0]); e.target.value = ''; };
+$('#btn-demo').onclick = () => { const r = demoData(); r.loadedAt = Date.now(); loadRaw(r, false); };
+$('#btn-template').onclick = downloadTemplate;
+$('#btn-pdf').onclick = exportPDF;
+$('#btn-html').onclick = exportHTML;
+document.querySelectorAll('[data-step]').forEach(b => b.onclick = () => {
+  const st = b.dataset.step, M = model();
+  if (st === 'first') setAsAt(FULL.firstLog ?? bounds().min);
+  else if (st === 'last') setAsAt(FULL.lastLog ?? bounds().max);
+  else setAsAt(S.asAt + +st);
+});
+$('#asat-input').onchange = e => { const v = parseDate(e.target.value); if (v != null) setAsAt(v); };
+$('#asat-slider').oninput = e => setAsAt(+e.target.value);
+$('#range-sel').onchange = e => { S.range = e.target.value; render(); };
+$('#asknown').onchange = e => { S.asKnown = e.target.checked; render(); };
+$('#mode-seg').onclick = e => { const b = e.target.closest('[data-mode]'); if (b) { S.mode = b.dataset.mode; render(); } };
+$('#parts-tabs').onclick = e => { const b = e.target.closest('[data-ptab]'); if (b) { S.partTab = b.dataset.ptab; renderParts(model(), S.asAt); } };
+$('#parts-search').oninput = e => { S.search = e.target.value; renderParts(model(), S.asAt); };
+['#gantt', '#trend'].forEach(id => $(id).addEventListener('click', e => { const t = e.target.closest('[data-day]'); if (t) setAsAt(+t.getAttribute('data-day')); }));
+$('#history-table').onclick = e => { const r = e.target.closest('[data-goto]'); if (r) { setAsAt(+r.dataset.goto); window.scrollTo({ top: 0, behavior: 'smooth' }); } };
+document.addEventListener('keydown', e => {
+  if (!RAW || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  if (e.key === 'ArrowLeft') setAsAt(S.asAt - (e.shiftKey ? 7 : 1));
+  if (e.key === 'ArrowRight') setAsAt(S.asAt + (e.shiftKey ? 7 : 1));
+});
+let rsz; window.addEventListener('resize', () => { clearTimeout(rsz); rsz = setTimeout(render, 150); });
+document.body.addEventListener('dragover', e => e.preventDefault());
+document.body.addEventListener('drop', e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); });
+
+(function init() {
+  let emb = null;
+  try { emb = JSON.parse($('#embedded-data').textContent || 'null'); } catch (e) {}
+  if (emb) { loadRaw(emb, true); return; }
+  try { const s = localStorage.getItem('vorPartsTracker'); if (s) loadRaw(JSON.parse(s), false); } catch (e) {}
+})();
+</script>
+</body>
+</html>
