@@ -176,6 +176,7 @@ main { padding: 16px 20px 40px; max-width: 1800px; margin: 0 auto; }
           <label title="Hide anything that happened after the selected date – see the board exactly as it looked that day"><input type="checkbox" id="asknown"> As known on that day</label>
         </div>
       </div>
+      <div id="nolog" class="warn hidden" style="margin:10px 0 0"></div>
       <div class="slider-row">
         <span class="muted" id="slider-min"></span>
         <input type="range" id="asat-slider" step="1">
@@ -273,12 +274,15 @@ function parseDate(v) {
   if (v instanceof Date) return isNaN(v) ? null : dn(v.getFullYear(), v.getMonth() + 1, v.getDate());
   if (typeof v === 'number') return (v > 20000 && v < 90000) ? Math.floor(v) - 25569 : null;
   const s = String(v).trim(); if (!s) return null;
-  let m = s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/); if (m) return dn(+m[1], +m[2], +m[3]);
-  m = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/);
-  if (m) { let y = +m[3]; if (y < 100) y += 2000; return dn(y, +m[2], +m[1]); }
-  m = s.match(/^(\d{1,2})(?:st|nd|rd|th)?[\s\-]+([A-Za-z]{3})[A-Za-z]*[\s\-,]+(\d{2,4})/);
-  if (m) { const mi = MON.findIndex(x => x.toLowerCase() === m[2].toLowerCase()); let y = +m[3]; if (y < 100) y += 2000; if (mi >= 0) return dn(y, mi + 1, +m[1]); }
   if (/^\d+(\.\d+)?$/.test(s)) return parseDate(+s);
+  const thisYear = ymd(todayDn())[0];
+  const ok = (y, mo, d) => mo >= 1 && mo <= 12 && d >= 1 && d <= 31 ? dn(y, mo, d) : null;
+  let m = s.match(/(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/); if (m) return ok(+m[1], +m[2], +m[3]);
+  m = s.match(/(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})\b/);
+  if (m) { let y = +m[3]; if (y < 100) y += 2000; return ok(y, +m[2], +m[1]); }
+  m = s.match(/(\d{1,2})(?:st|nd|rd|th)?[\s\-]+(?:of\s+)?([A-Za-z]{3})[A-Za-z]*\.?(?:[\s\-,]+(\d{2,4}))?/);
+  if (m) { const mi = MON.findIndex(x => x.toLowerCase() === m[2].toLowerCase()); let y = m[3] ? +m[3] : thisYear; if (y < 100) y += 2000; if (mi >= 0) return ok(y, mi + 1, +m[1]); }
+  m = s.match(/(?:^|\s)(\d{1,2})[\/.](\d{1,2})$/); if (m) return ok(thisYear, +m[2], +m[1]);
   const t = Date.parse(s); if (!isNaN(t)) { const d = new Date(t); return dn(d.getFullYear(), d.getMonth() + 1, d.getDate()); }
   return null;
 }
@@ -327,14 +331,23 @@ function parseWorkbook(wb) {
     if (lh) {
       foundLog = true; if (!depot) depot = depotFrom(name);
       const dc = colIdx(lh.h, /date|day/), bc = colIdx(lh.h, /bus|fleet|vehicle|vor|log/, /date/);
+      let prev = null; const bad = [];
       for (let i = lh.i + 1; i < rows.length; i++) {
-        const r = rows[i] || []; const d = parseDate(r[dc]); if (d == null) continue;
+        const r = rows[i] || [];
         const cells = []; for (let j = bc; j < r.length; j++) if (j !== dc && r[j] != null && String(r[j]).trim() !== '') cells.push(String(r[j]));
+        let d = parseDate(r[dc]);
+        if (d != null) prev = d;
         if (!cells.length) continue; // blank row = not logged yet
+        if (d == null) {
+          const blank = r[dc] == null || String(r[dc]).trim() === '';
+          if (blank && prev != null) d = prev; // date only on the first row of the day
+          else { bad.push(`row ${i + 1} (“${trunc(r[dc] ?? '', 20)}”)`); continue; }
+        }
         const set = logMap.get(d) || new Set();
         cells.join(',').replace(/(\d)\s*[-–:]?\s*MOT\b/gi, '$1MOT').replace(/\bMOT\s*[-–:]?\s*(\d\w*)/gi, '$1MOT').split(/[,;\/\n\r\t ]+/).map(normBus).filter(b => b && !/^(NONE|NIL|N\/A|NA|-|0|MOT)$/.test(b)).forEach(b => set.add(b));
         logMap.set(d, set);
       }
+      if (bad.length) warnings.push(`Sheet “${name}”: ${plural(bad.length, 'row')} skipped – the date could not be read: ${bad.slice(0, 4).join(', ')}${bad.length > 4 ? '…' : ''}. Put a normal date (e.g. 17/10/2026) in the Date column.`);
     }
   });
   if (!foundParts) warnings.push('No parts tab found (needs headers such as “Bus Number” and “Part Number”).');
@@ -351,7 +364,7 @@ function build(raw, cutoff) {
   const eps = [], active = new Map();
   log.forEach(([d, buses], li) => {
     const S = new Set(buses);
-    for (const [b, ep] of active) if (!S.has(b)) { ep.end = d; active.delete(b); }
+    for (const [b, ep] of active) if (!S.has(b)) { ep.end = ep.last + 1; active.delete(b); }
     for (const b of S) {
       if (!active.has(b)) { const mot = /MOT$/.test(b); const ep = { id: eps.length, bus: mot ? b.replace(/MOT$/, '') : b, type: mot ? 'MOT' : 'VOR', start: d, end: null, last: d, fromStart: li === 0, parts: [] }; eps.push(ep); active.set(b, ep); }
       active.get(b).last = d;
@@ -508,10 +521,11 @@ function ganttSVG(M, d, vs, ve, W, rows, opts = {}) {
     });
     // timeline
     s += `<g clip-path="url(#${clip})">`;
-    const endT = e.end == null ? ve + 2 : e.end;
+    const endT = e.end == null ? Math.max(M.lastLog ?? e.start, e.start) + 1 : e.end;
     const x1 = X(Math.max(e.start, vs - 1)), x2 = X(Math.min(endT, ve + 2));
+    if (e.end == null && endT <= ve + 1) s += `<g><title>Not on a logged day after ${fmtL(endT - 1)} yet – still shown as off road until the next log entry</title><rect x="${x2}" y="${y + 8}" width="${Math.max(0, X(ve + 2) - x2)}" height="15" fill="none" stroke="${BAR}" stroke-dasharray="4 3" opacity=".6"/></g>`;
     const op = act ? 1 : (future ? .25 : .38);
-    const tip = `Bus ${e.bus} ${mot ? 'on MOT from' : 'off road'} ${fmtL(e.start)}${e.fromStart ? ' (or earlier – first day of log)' : ''}\n` + (e.end != null ? `Back on road ${fmtL(e.end)} – ${e.end - e.start} day(s)` : `Still off road – ${days} day(s) as at ${fmtL(d)}`) + `\nParts linked: ${e.parts.length}` + (e.parts.length ? ` · days awaiting parts: ${epAwaitDays(e, d)}` : '');
+    const tip = `Bus ${e.bus} ${mot ? 'on MOT from' : 'off road'} ${fmtL(e.start)}${e.fromStart ? ' (or earlier – first day of log)' : ''}\n` + (e.end != null ? `Back on road ${fmtL(e.end)} (last on the log ${fmtL(e.end - 1)}) – ${e.end - e.start} day(s)` : `Still on the log at last entry ${fmtL(e.last)} – ${days} day(s) as at ${fmtL(d)}`) + `\nParts linked: ${e.parts.length}` + (e.parts.length ? ` · days awaiting parts: ${epAwaitDays(e, d)}` : '');
     s += `<g><title>${esc(tip)}</title><rect x="${x1}" y="${y + 8}" width="${Math.max(2, x2 - x1)}" height="15" rx="3" fill="${BAR}" opacity="${op}"/>`;
     if (x2 - Math.max(x1, LW) > 70) s += `<text x="${Math.max(x1, LW) + 6}" y="${y + 19}" font-size="10" fill="#fff" font-weight="600">${KIND} ${e.end != null ? (e.end - e.start) + 'd' : '– ongoing'}</text>`;
     s += `</g>`;
@@ -557,7 +571,7 @@ function ganttSVG(M, d, vs, ve, W, rows, opts = {}) {
 function trendSVG(M, d, vs, ve, W) {
   const HH = 22, CH = 150, BOT = 26, H = HH + CH + BOT, n = ve - vs + 1, dw = (W - LW) / n;
   const X = t => LW + (t - vs) * dw;
-  const lastT = M.lastLog == null ? null : Math.max(M.lastLog, Math.min(d, todayDn()));
+  const lastT = M.lastLog;
   const data = [];
   if (M.firstLog != null) for (let t = Math.max(vs, M.firstLog); t <= Math.min(ve, lastT); t++) data.push({ t, ...dayCounts(M, t) });
   const max = Math.max(4, ...data.map(x => x.off + x.mot));
@@ -625,7 +639,7 @@ function loadRaw(raw, fromStandalone) {
   if (v.range) S.range = v.range; if (v.mode) S.mode = v.mode; if (v.asKnown != null) S.asKnown = v.asKnown;
   $('#range-sel').value = S.range; $('#asknown').checked = S.asKnown;
   $('#title-depot').textContent = raw.depot ? raw.depot + ' ' : '';
-  $('#hdr-meta').textContent = (raw.source || '') + (raw.loadedAt ? ' · loaded ' + new Date(raw.loadedAt).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) : '');
+  $('#hdr-meta').textContent = (raw.source || '') + (FULL.lastLog != null ? ` · log ${fmtS(FULL.firstLog)} – ${fmtS(FULL.lastLog)} (${plural(FULL.logDays, 'day')})` : '') + (raw.loadedAt ? ' · loaded ' + new Date(raw.loadedAt).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) : '');
   $('#empty').classList.add('hidden'); $('#dash').classList.remove('hidden');
   $('#btn-pdf').disabled = false; $('#btn-html').disabled = false;
   const w = [...(raw.warnings || [])];
@@ -644,6 +658,11 @@ function render() {
   if (!RAW) return;
   const M = model(), d = S.asAt, { vs, ve } = windowOf(M), b = bounds();
   $('#asat-label').textContent = fmtW(d);
+  const nolog = FULL.lastLog != null && !RAW.log.some(([t]) => t === d);
+  $('#nolog').classList.toggle('hidden', !nolog);
+  if (nolog) $('#nolog').innerHTML = d > FULL.lastLog
+    ? `⚠ No daily log entry for <b>${fmtW(d)}</b>. The last entry read is <b>${fmtW(FULL.lastLog)}</b>, so buses are shown as they were on that day. If you have logged later days, check those rows have a readable date.`
+    : `No daily log entry for <b>${fmtW(d)}</b> – buses are shown as they were on the previous logged day.`;
   $('#asat-input').value = isoOf(d);
   const sl = $('#asat-slider'); sl.min = b.min; sl.max = Math.max(b.max, d); sl.value = d;
   $('#slider-min').textContent = fmtS(b.min); $('#slider-max').textContent = fmtS(Math.max(b.max, d));
