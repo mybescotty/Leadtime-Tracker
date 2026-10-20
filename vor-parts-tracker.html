@@ -631,7 +631,7 @@ function ganttRows(M, vs, ve, type = 'VOR') {
   return rows.sort((a, b) => a.start - b.start || a.bus.localeCompare(b.bus, undefined, { numeric: true }));
 }
 
-function loadRaw(raw, fromStandalone) {
+function loadRaw(raw, fromStandalone, restored) {
   RAW = raw; FULL = build(RAW, null);
   const b = bounds();
   const v = raw.view || {};
@@ -647,7 +647,8 @@ function loadRaw(raw, fromStandalone) {
   const un = FULL.parts.filter(p => !p.ep).length;
   if (un) w.push(`${plural(un, 'part')} could not be matched to a VOR spell (bus not on the daily log within ${LINK_PRE} days of the request) – shown under “Not linked” in the parts log.`);
   $('#warnings').innerHTML = w.map(esc).join('<br>'); $('#warnings').classList.toggle('hidden', !w.length);
-  $('#banner').classList.toggle('hidden', !fromStandalone);
+  $('#banner').classList.toggle('hidden', !fromStandalone && !restored);
+  if (restored) $('#banner').innerHTML = `Showing your last upload – <b>${esc(raw.source || 'workbook')}</b>, loaded ${esc(new Date(raw.loadedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }))}. If you have updated the spreadsheet since, save it and <b>upload it again</b> to see the latest log.`;
   if (fromStandalone) $('#banner').innerHTML = `Standalone snapshot exported ${esc(new Date(raw.exportedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }))} from <b>${esc(raw.source || 'workbook')}</b>. Browse freely – upload a newer workbook to refresh.`;
   render();
 }
@@ -957,7 +958,7 @@ document.body.addEventListener('drop', e => { e.preventDefault(); handleFile(e.d
   let emb = null;
   try { emb = JSON.parse($('#embedded-data').textContent || 'null'); } catch (e) {}
   if (emb) { loadRaw(emb, true); return; }
-  try { const s = localStorage.getItem('vorPartsTracker'); if (s) loadRaw(JSON.parse(s), false); } catch (e) {}
+  try { const s = localStorage.getItem('vorPartsTracker'); if (s) loadRaw(JSON.parse(s), false, true); } catch (e) {}
 })();
 </script>
 </body>
